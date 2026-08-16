@@ -4,3 +4,9 @@ __pycache__/
 *.egg-info/
 *.npy
 .donotcommit/
+# emit() writes results/ relative to the cwd, so a run started outside the repo
+# root leaves one anywhere. Ignore every results/ and re-admit only the note.
+results/
+!/results/
+/results/*
+!/results/README.md
