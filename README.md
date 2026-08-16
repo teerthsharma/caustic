@@ -15,7 +15,8 @@
 
 <p align="center">
   <a href="LICENSE"><img src="https://img.shields.io/badge/license-MIT-blue?style=flat-square&color=00aaff" alt="MIT"></a>
-  <a href="#4-the-five-theorems"><img src="https://img.shields.io/badge/theorems-9%20proved%2C%202%20no--go-blueviolet?style=flat-square" alt="Theorems"></a>
+  <a href="#4-the-five-theorems"><img src="https://img.shields.io/badge/theorems-10%20proved%2C%202%20no--go-blueviolet?style=flat-square" alt="Theorems"></a>
+  <a href="#4-the-five-theorems"><img src="https://img.shields.io/badge/certificate-60%20checks%2C%203%20models%2C%200%20violations-brightgreen?style=flat-square" alt="Certificate"></a>
   <a href="#3-detection-without-ground-truth"><img src="https://img.shields.io/badge/equivariance%20AUROC-0.995%20(collapse--type%20errors)-yellow?style=flat-square" alt="AUROC"></a>
   <a href="#7-stochastic-resonance"><img src="https://img.shields.io/badge/stochastic%20resonance-%2B0.333%20from%20noise-ff6b35?style=flat-square" alt="Resonance"></a>
   <a href="#8-system-prompts-are-never-neutral"><img src="https://img.shields.io/badge/neutral%20system%20prompts-0%20of%206-critical?style=flat-square" alt="Neutrality"></a>
@@ -101,17 +102,37 @@ correct answer to compute, and once it resolves it is exactly preserved as conte
 adjusted Rand index `1.0000` from 128 to 512 tokens, while 15% of the individual answers still
 change.
 
-Four things follow. The failure is **detectable without ground truth**: an equivariance score
-computed from five forward passes, consulting no answer key and no Jacobian, reaches **AUROC
-0.995** on an injective relation whose errors are collapse. It detects *collapse*, not error,
-and where errors disperse instead it falls to 0.67–0.71 with intervals spanning chance —
-see [Scope](#scope-what-this-does-not-claim) before relying on the figure. It is **bounded**: for an injective relation on `n` entities
-producing `m` distinct answers, at least `n − m` answers are provably wrong, and a pooled block
-of `k` entities caps *any* downstream recovery at `1/k`. It is **repairable**, and the repair
-measures its own effect size and flags the case where a prefix makes matters worse. And,
-because the bound needs no ground truth, it is **usable as an objective**: `select_prefix` runs
-candidate contexts in competition scored by the certified floor, always entering the empty
-prefix so it can decline to intervene.
+Four things follow, in order of what the evidence supports.
+
+The failure is **certified without ground truth**, and this is the result. For an injective
+relation on `n` entities producing `m` distinct answers, at least `n − m` are provably wrong.
+Given the correct answers as a *set* — that Paris and Berlin are capitals, not which country
+each belongs to — the bound sharpens to `n − |f(E) ∩ G|`, and that quantity hit the true error
+count **exactly in 16 of 16** measured rows across three model families, where `n − m` was loose
+in all 16. On `currency` under Qwen2.5-0.5B, `n − m` certifies 0 — it proves nothing — while the
+true count is 6 and the sharpened bound certifies 6. These are deterministic inequalities over a
+finite set: no sampling distribution, no minority class, nothing to be underpowered about. **60
+bound checks, 3 models, 0 violations.**
+
+The certificate is **actionable**, not just a count. The entities in collapsed orbits form a set
+whose precision is *proved before it is evaluated* — at least `1 − b/|S|`, and `1 − b_adm/|S|`
+when the answer set is supplied, which reached 1.000 in every row that had a flagged set. What
+cannot be bounded is recall: a model that shuffles the correct answers among entities collapses
+nothing, emits nothing inadmissible, scores zero accuracy, and is invisible by construction.
+That is a theorem, not a gap.
+
+Because the bound needs no ground truth, it is **usable as an objective**: `select_prefix` runs
+candidate contexts in competition scored by the certified floor, always entering the empty prefix
+so it can decline. And it is cheap enough to deploy — a relation whose partition is already
+discrete cannot be improved by any candidate, so the competition is decidable without running it,
+and the remaining prompts batch into one forward pass: **100 sequential passes reduced to 1**.
+
+The failure is also **detectable by a score**, and this is the weakest of the four. An
+equivariance score over five forward passes reaches **AUROC 0.995** on an injective relation
+whose errors are collapse. It detects *collapse*, not error; where errors disperse it falls to
+0.67–0.71 with intervals spanning chance, on minority classes of 1, 3, 4 and 8, at sample sizes
+with power 0.00–0.38 to tell 0.70 from 0.50. Read [Scope](#scope-what-this-does-not-claim)
+before relying on that figure.
 
 That last property produces the strongest result here. The wrong decision is a near-tie — the
 correct token trails the chosen one by **0.2526 standard deviations** — which is the textbook
