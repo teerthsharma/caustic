@@ -4,12 +4,13 @@ from .bridge import CANONICAL_SEED, jl_matrix, project, jl_distortion_bound, com
 from .theorems import (
     orbit_error_bound,
     pooling_recovery_bound,
+    join_recovery_bound,
     path_integral_change,
     volume_decay_rate,
     winding_witness,
 )
 from .repair import NEUTRAL_PREFIX, RepairReport, repair_by_context, sweep_prefixes
-from .regime import RelationSpec, OrbitReport, orbit_partition, symmetry_scores
+from .regime import RelationSpec, OrbitReport, orbit_partition, join_partition, symmetry_scores
 from .attractor import kaplan_yorke_dimension, embedding_bound, metric_entropy, spectrum_report
 from .cocycle import lyapunov_spectrum, finite_time_spectrum
 from .oseledets import growth_filtration, filtration_entropy, tolerance_sweep
@@ -37,10 +38,12 @@ __all__ = [
     "volume_decay_rate",
     "path_integral_change",
     "pooling_recovery_bound",
+    "join_recovery_bound",
     "orbit_error_bound",
     "RelationSpec",
     "OrbitReport",
     "orbit_partition",
+    "join_partition",
     "symmetry_scores",
     "kaplan_yorke_dimension",
     "embedding_bound",

@@ -42,7 +42,13 @@ from dataclasses import dataclass, field
 
 import numpy as np
 
-__all__ = ["RelationSpec", "OrbitReport", "orbit_partition", "symmetry_scores"]
+__all__ = [
+    "RelationSpec",
+    "OrbitReport",
+    "orbit_partition",
+    "join_partition",
+    "symmetry_scores",
+]
 
 
 @dataclass(frozen=True)
@@ -162,6 +168,47 @@ def orbit_partition(spec: RelationSpec, answer_fn) -> OrbitReport:
         injective=spec.injective,
         n_distinct=len(orbits),
         largest_orbit=max(counts),
+        orbits=orbits,
+    )
+
+
+def join_partition(spec: RelationSpec, answer_fn) -> OrbitReport:
+    """Partition entities by the FULL answer tuple across every template.
+
+    This is the common refinement of the per-template partitions, `H0` of the
+    relation "agrees under every paraphrase". Two entities share a block only if
+    every template gives them the same answer, so the join is at least as fine as
+    any component and is what a receiver seeing all `T` answers can distinguish.
+
+    `orbit_partition` uses `templates[0]` because that is the answer a caller
+    ships. `join_partition` is not a competitor to it: it measures what is
+    RECOVERABLE rather than what was answered, which is the quantity Theorem 2*
+    bounds and the reason repair is possible at all.
+
+    Costs the same `T` forward passes per entity that `symmetry_scores` already
+    makes, and returns an `OrbitReport` so the same properties apply. Note that
+    `certified_errors` on that report is not Theorem 1's certificate for any
+    shipped answer — the join is not an answer map — so read `n_distinct` and
+    `largest_orbit` from it, not the certificate.
+
+    Raises:
+        ValueError: with fewer than two templates, where the join is just the
+            partition and `orbit_partition` is the function the caller wants.
+    """
+    if len(spec.templates) < 2:
+        raise ValueError("the join needs at least two templates; use orbit_partition")
+    answers = [
+        tuple(answer_fn(t.format(e=e)) for t in spec.templates) for e in spec.entities
+    ]
+    orbits: dict[tuple, list[str]] = {}
+    for e, a in zip(spec.entities, answers):
+        orbits.setdefault(a, []).append(e)
+    return OrbitReport(
+        entities=tuple(spec.entities),
+        answers=tuple(answers),
+        injective=spec.injective,
+        n_distinct=len(orbits),
+        largest_orbit=max(len(v) for v in orbits.values()),
         orbits=orbits,
     )
 
