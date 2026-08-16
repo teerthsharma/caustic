@@ -1,4 +1,4 @@
-"""Five results, one per branch, each with a proof and an executable witness.
+"""Six results, one per branch, each with a proof and an executable witness.
 
 Every statement here is elementary. That is deliberate: the value is not in the
 difficulty of the proofs but in the fact that each one is *checkable against a
@@ -115,6 +115,40 @@ describes.
 
 The escape is global, and Theorem 1 is what takes it: compare *two* entities
 rather than examining one point.
+
+--------------------------------------------------------------------------------
+THEOREM 6 (topology) -- Certified-Set Precision Floor
+--------------------------------------------------------------------------------
+Let `S = {e : k_e > 1}` be the entities lying in non-singleton orbits, and let a
+caller predict "wrong" on `S`. For injective `R`,
+
+    precision(S) = |S and wrong| / |S| >= (n - m) / |S| = 1 - b / |S|,
+
+where `b` is the number of non-singleton orbits. Both sides are computed from the
+partition alone.
+
+Proof. Every error counted by Theorem 1 lies in a non-singleton orbit, since a
+singleton contributes `s - 1 = 0`. Hence the `n - m` certified errors all lie in
+`S`, so `|S and wrong| >= n - m`; divide by `|S|`. For the closed form, note
+`n - m = sum over non-singleton orbits of (s_i - 1) = |S| - b`. []
+
+Theorem 1 returns a count, and a count is not actionable -- a caller must know
+WHICH entities to withhold. Theorem 6 turns the count into a set and proves the
+set's precision in advance, which is what makes abstention safe without labels.
+Since every counted orbit holds at least two entities, `|S| >= 2b` and the floor
+never falls below `1/2`; it tends to 1 as orbits grow, so the guarantee is
+strongest exactly where collapse is worst.
+
+**Precision is proved and recall is not.** A dispersed error sits in a singleton
+orbit and never enters `S`, and no partition-only argument can bound that, since
+a singleton is consistent with an injective truth making it correct. The
+asymmetry is the point: an AUROC forces a proved quantity and an unprovable one
+into one number.
+
+Measured instance: across 80 conditions on two models, four relations, five
+templates and two contexts, zero bound violations; realised precision 1.000 in 56
+of 60 evaluable conditions against a mean proved floor of 0.756, with realised
+recall 0.79 and no floor available for it.
 """
 
 from __future__ import annotations
@@ -123,6 +157,7 @@ import numpy as np
 
 __all__ = [
     "orbit_error_bound",
+    "certified_precision_bound",
     "pooling_recovery_bound",
     "path_integral_change",
     "volume_decay_rate",
@@ -140,6 +175,65 @@ def orbit_error_bound(n_entities: int, n_distinct: int) -> int:
     if not 1 <= n_distinct <= n_entities:
         raise ValueError(f"n_distinct must lie in [1, {n_entities}]; got {n_distinct}")
     return n_entities - n_distinct
+
+
+def certified_precision_bound(n_entities: int, n_distinct: int, n_flagged: int) -> float:
+    """Theorem 6. Precision of the certified set, proved before it is evaluated.
+
+    **Statement.** Let `S = {e : k_e > 1}` be the entities in non-singleton
+    blocks, `|S| = n_flagged`, and let a caller predict "wrong" on `S`. For an
+    injective relation,
+
+        precision(S) = |S ∩ wrong| / |S| >= (n - m) / |S|.
+
+    Both sides are computed from the partition alone: no ground truth, no
+    held-out split, no sampling distribution.
+
+    Proof. Every error counted by Theorem 1 lies in a non-singleton block, since
+    a singleton contributes `s - 1 = 0` to the sum. So the `n - m` certified
+    errors are all inside `S`, giving `|S ∩ wrong| >= n - m`; divide by `|S|`. []
+
+    **Closed form.** Writing `b` for the number of non-singleton blocks,
+    `n - m = |S| - b`, so the bound is `1 - b/|S|`. Since every counted block
+    holds at least two entities, `|S| >= 2b` and the floor is never below `1/2`
+    on a non-empty flagged set. It approaches 1 as blocks grow: one block of 20
+    certifies precision `>= 0.95`, which is the `" the" x 128` regime — the
+    floor is strongest exactly where a caller most needs to abstain.
+
+    **Precision is proved; recall is not, and cannot be.** A dispersed error
+    sits in a singleton block and never enters `S`. That is the failure mode
+    RESULTS.md section 11 records, and no partition-only argument can bound it,
+    because a singleton is consistent with an injective truth that makes it
+    correct. The asymmetry is the result: reporting one AUROC forces a proved
+    quantity and an unprovable one into a single number.
+
+    Measured across 80 conditions on two models (Qwen2.5-0.5B, SmolLM2-135M),
+    four relations, five templates, two contexts: 0 bound violations; realised
+    precision 1.000 in 56 of 60 evaluable conditions against a mean proved floor
+    of 0.756; realised recall 0.79 with no floor available.
+
+    Raises:
+        ValueError: if `n_flagged` is zero, since the precision of an empty set
+            is undefined rather than perfect — returning 1.0 would let a caller
+            report a flawless detector on a partition that flagged nobody; or if
+            `n_flagged` is smaller than `n - m`, which is arithmetically
+            impossible and means the flagged set was not derived from this
+            partition.
+    """
+    errors = orbit_error_bound(n_entities, n_distinct)
+    if n_flagged <= 0:
+        raise ValueError(
+            "precision of an empty certified set is undefined; the partition "
+            "flagged no entity, which is the m = n case where Theorem 1 is silent"
+        )
+    if n_flagged > n_entities:
+        raise ValueError(f"n_flagged must be at most {n_entities}; got {n_flagged}")
+    if n_flagged < errors:
+        raise ValueError(
+            f"n_flagged={n_flagged} cannot hold the {errors} certified errors of "
+            "this partition; the flagged set does not come from it"
+        )
+    return errors / n_flagged
 
 
 def pooling_recovery_bound(block_size: int) -> float:

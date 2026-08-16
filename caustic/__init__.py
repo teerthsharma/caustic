@@ -3,6 +3,7 @@ from .governor import PrefixVerdict, PromptCost, select_prefix, prompt_cost
 from .bridge import CANONICAL_SEED, jl_matrix, project, jl_distortion_bound, comparable_ratio
 from .theorems import (
     orbit_error_bound,
+    certified_precision_bound,
     pooling_recovery_bound,
     path_integral_change,
     volume_decay_rate,
@@ -38,6 +39,7 @@ __all__ = [
     "path_integral_change",
     "pooling_recovery_bound",
     "orbit_error_bound",
+    "certified_precision_bound",
     "RelationSpec",
     "OrbitReport",
     "orbit_partition",
