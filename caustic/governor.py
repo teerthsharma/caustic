@@ -40,7 +40,7 @@ from dataclasses import dataclass
 
 import numpy as np
 
-from .regime import RelationSpec, orbit_partition
+from .regime import OrbitReport, RelationSpec, orbit_partition
 from .theorems import certified_error_floor
 
 __all__ = ["PrefixVerdict", "PromptCost", "select_prefix", "prompt_cost"]
@@ -56,6 +56,15 @@ class PrefixVerdict:
     baseline_floor: float
     largest_orbit: int
     scores: dict[str, float]
+    winner_report: OrbitReport | None = None
+    """The winner's partition, so a caller need not re-run it.
+
+    Scoring already computed one `orbit_partition` per candidate, and the
+    winner's is the one a caller acts on. Discarding it costs `n` forward passes
+    to recompute — 4 of every 16 in a three-candidate competition — which is
+    pure waste at inference. Defaults to None so existing constructions keep
+    working.
+    """
 
     @property
     def improvement(self) -> float:
@@ -175,6 +184,7 @@ def select_prefix(
         baseline_floor=baseline,
         largest_orbit=reports[best].largest_orbit,
         scores=scores,
+        winner_report=reports[best],
     )
 
 
