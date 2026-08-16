@@ -32,17 +32,28 @@ single free-form generation, does not detect a false statement about an entity i
 was not given, and requires the relation to be injective — distinct entities must
 genuinely warrant distinct answers, or a collapsed orbit is correct behaviour and
 the signal inverts. `RelationSpec.injective` records that precondition rather than
-leaving it implicit.
+leaving it implicit, and `verify_injective` checks it at the level the experiments
+actually score it: the FIRST TOKEN of the gold answer. Injectivity of the relation
+does not survive that composition — "Asmara" and "Asuncion" are different capitals
+sharing a first token — and where it fails the bound certifies an error that is
+not one.
 """
 
 from __future__ import annotations
 
 import itertools
+from collections.abc import Callable
 from dataclasses import dataclass, field
 
 import numpy as np
 
-__all__ = ["RelationSpec", "OrbitReport", "orbit_partition", "symmetry_scores"]
+__all__ = [
+    "RelationSpec",
+    "OrbitReport",
+    "orbit_partition",
+    "symmetry_scores",
+    "verify_injective",
+]
 
 
 @dataclass(frozen=True)
@@ -58,7 +69,14 @@ class RelationSpec:
             Equivariance is undefined when this is False — many countries share a
             continent, so a collapsed orbit is then correct and the collision
             score inverts. Measured: 0.995 AUROC on an injective relation against
-            0.273 on a many-to-one one.
+            0.273 on a many-to-one one. This flag is a claim, not a check;
+            `verify_injective` is the check.
+
+    Entities must be distinct and non-blank. `orbit_partition` counts a repeated
+    entity twice and puts both copies in one orbit, which raises `largest_orbit`
+    and lowers `n_distinct`, so a caller typo makes `certified_errors` claim
+    errors that do not exist. A blank entity formats into a prompt the relation
+    does not describe, and its answer is then partitioned as if it did.
     """
 
     templates: tuple[str, ...]
@@ -72,6 +90,17 @@ class RelationSpec:
             raise ValueError("every template must contain '{e}'")
         if len(self.entities) < 2:
             raise ValueError("at least two entities are required to form a partition")
+        blank = [e for e in self.entities if not e.strip()]
+        if blank:
+            raise ValueError(f"entity is empty or whitespace-only: {blank[0]!r}")
+        seen: set[str] = set()
+        for e in self.entities:
+            if e in seen:
+                raise ValueError(
+                    f"duplicate entity {e!r}: orbit_partition would count it twice, "
+                    "inflating largest_orbit and therefore certified_errors"
+                )
+            seen.add(e)
 
 
 @dataclass
@@ -164,6 +193,54 @@ def orbit_partition(spec: RelationSpec, answer_fn) -> OrbitReport:
         largest_orbit=max(counts),
         orbits=orbits,
     )
+
+
+def verify_injective(
+    spec: RelationSpec,
+    gold: dict[str, str],
+    first_token_fn: Callable[[str], int],
+) -> list[tuple[str, str]]:
+    """Check the precondition `injective=True` asserts, at the level it is scored.
+
+    Every experiment in this repository reads the model's answer as the argmax
+    token id of the next token and judges it against the FIRST token of the gold
+    string. The map the orbit error bound is applied to is therefore
+    `first_token . gold`, not `gold`. Injectivity of `gold` does not imply
+    injectivity of the composite: "Asmara" and "Asuncion" are different capitals
+    that begin with the same token, and two entities whose gold answers collide
+    there are forced into one orbit however well the model performs. The bound
+    then counts a FALSE certified error — a wrong answer where both answers may
+    in fact be right.
+
+    `RelationSpec.injective` is a caller-supplied boolean that nothing verifies.
+    This function turns it from a claim into something checkable: an empty return
+    means the precondition genuinely holds under the given tokenisation, and any
+    returned pair is an entity pair on which `certified_errors` may over-count.
+    The over-count is bounded by `n - (distinct first tokens)`, not by the number
+    of pairs: three entities on one token yield three pairs but can inflate
+    `n - m` by only two.
+
+    Args:
+        spec: the relation whose `entities` are checked.
+        gold: entity -> its correct answer string. Must cover every entity.
+        first_token_fn: maps an answer string to its first token id. Passed in
+            rather than imported so this module stays free of transformers and
+            testable with a stub.
+
+    Returns:
+        Entity pairs sharing a first token, in `itertools.combinations` order
+        over `spec.entities`. Empty when the composite map is injective.
+
+    Raises:
+        ValueError: if `gold` does not cover every entity in `spec.entities`.
+    """
+    missing = [e for e in spec.entities if e not in gold]
+    if missing:
+        raise ValueError(f"gold is missing {len(missing)} entities, first: {missing[0]!r}")
+    ids = {e: first_token_fn(gold[e]) for e in spec.entities}
+    return [
+        (a, b) for a, b in itertools.combinations(spec.entities, 2) if ids[a] == ids[b]
+    ]
 
 
 def symmetry_scores(spec: RelationSpec, answer_fn) -> dict[str, dict[str, float]]:
