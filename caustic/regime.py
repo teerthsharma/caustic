@@ -42,7 +42,13 @@ from dataclasses import dataclass, field
 
 import numpy as np
 
-__all__ = ["RelationSpec", "OrbitReport", "orbit_partition", "symmetry_scores"]
+__all__ = [
+    "RelationSpec",
+    "OrbitReport",
+    "orbit_partition",
+    "symmetry_scores",
+    "admissible_distinct",
+]
 
 
 @dataclass(frozen=True)
@@ -164,6 +170,28 @@ def orbit_partition(spec: RelationSpec, answer_fn) -> OrbitReport:
         largest_orbit=max(counts),
         orbits=orbits,
     )
+
+
+def admissible_distinct(answers, gold_keys) -> int:
+    """`m* = |f(E) ∩ G|`, the input to Theorem 1*.
+
+    Args:
+        answers: the observed answers, one per entity, as `OrbitReport.answers`
+            gives them. Duplicates are expected — this counts distinct values.
+        gold_keys: the set of correct answers *as a set*, in the same encoding
+            `answer_fn` returns. For a top-1 token id detector that is the set
+            of first tokens of the gold strings.
+
+    The pairing is not needed and must not be supplied: knowing that Paris and
+    Berlin are capitals is enough, and knowing which country each belongs to
+    would be ground truth. That is the whole reason the certificate survives
+    where an answer key does not exist.
+
+    Counting distinct rather than total matters. An orbit of size `s` sharing an
+    admissible answer can contain at most one correct entity, so it contributes
+    one to the ceiling on `|C|`, not `s`.
+    """
+    return len(set(answers) & set(gold_keys))
 
 
 def symmetry_scores(spec: RelationSpec, answer_fn) -> dict[str, dict[str, float]]:
