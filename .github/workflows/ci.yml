@@ -1,0 +1,43 @@
+name: ci
+
+on:
+  push:
+    branches: [master]
+  pull_request:
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        python-version: ["3.10", "3.11", "3.12"]
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python-version }}
+          cache: pip
+
+      # The default wheel pulls ~2.5 GB of CUDA runtime the tests never touch;
+      # nothing under tests/ needs a GPU.
+      - name: Install CPU-only torch
+        run: pip install torch --index-url https://download.pytorch.org/whl/cpu
+
+      # No `experiments` extra: that pulls transformers, and the scripts it
+      # serves download model checkpoints, which must never happen on a runner.
+      - name: Install caustic
+        run: pip install -e ".[dev]"
+
+      - name: Tests
+        run: python -m pytest -q
+
+      # Bare, the audit reads no files and passes vacuously; the markdown is the
+      # argument, and README.md is where the rejected macro broke rendering.
+      # `ls` first so an unmatched glob fails the step instead of being passed
+      # through literally and skipped by the tool's exists() guard.
+      - name: Math macro audit
+        run: |
+          ls *.md
+          python tools/math_macro_audit.py *.md
