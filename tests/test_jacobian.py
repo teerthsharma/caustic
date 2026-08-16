@@ -191,7 +191,10 @@ def test_log_volume_equals_logdet(W, h_in):
     J = exact_jacobian(LinearBlock(W), h_in, pos=0)
     sv = singular_values(J).cpu().numpy().astype(np.float64)
     expected = torch.linalg.slogdet(J.double())[1].item()
-    assert log_volume(sv) == pytest.approx(expected, rel=1e-8)
+    # singular_values works in float32 while slogdet works in float64, so the
+    # gap is bounded by float32 eps, not by anything about log_volume. rel=1e-8
+    # held only on Windows/MKL; Linux LAPACK lands at ~1e-7.
+    assert log_volume(sv) == pytest.approx(expected, rel=1e-6)
 
 
 def test_tail_alpha_rejects_a_degenerate_bulk():
