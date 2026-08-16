@@ -109,14 +109,37 @@ def test_unicode_and_punctuation_entities_are_handled():
     assert sum(len(v) for v in r.orbits.values()) == 4
 
 
-def test_duplicate_entities_are_not_silently_deduplicated():
-    """Two copies of one entity give one answer, hence an orbit of two. The
-    caller's duplicate is their bug, but it must not vanish from the totals."""
-    r = orbit_partition(RelationSpec(TPLS, ("A", "A", "B")), lambda p: p.count("A"))
-    assert sum(len(v) for v in r.orbits.values()) == 3
+def test_duplicate_entities_are_rejected_rather_than_partitioned():
+    """Two copies of one entity used to give one answer, hence an orbit of two,
+    hence a certified error the model did not make. Not deduplicating was the
+    lesser of two wrong behaviours; the spec now refuses to be built at all."""
+    with pytest.raises(ValueError, match="duplicate entity"):
+        RelationSpec(TPLS, ("A", "A", "B"))
 
 
 def test_repair_of_an_already_separated_partition_is_not_a_repair():
     spec = RelationSpec(TPLS, tuple(f"E{i}" for i in range(6)))
     r = repair_by_context(spec, lambda p: hash(p), prefix="P ")
     assert not r.repaired
+
+
+def test_every_public_name_resolves():
+    """`__all__` integrity, which no test checked and a merge quietly broke.
+
+    Three keep-both copies of the same `from .regime import` line each carried
+    one branch's new name, and the union lost `injective_subset`: it stayed in
+    `__all__`, was never bound, and `from caustic import *` raised on a package
+    whose 355 tests were green.
+    """
+    import caustic
+
+    missing = [n for n in caustic.__all__ if not hasattr(caustic, n)]
+    assert missing == [], f"listed in __all__ but not importable: {missing}"
+
+
+def test_no_public_name_is_listed_twice():
+    """The same union-of-lists artifact that cost the export above."""
+    import caustic
+
+    dupes = sorted({n for n in caustic.__all__ if caustic.__all__.count(n) > 1})
+    assert dupes == [], f"duplicated in __all__: {dupes}"

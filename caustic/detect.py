@@ -18,6 +18,9 @@ pass, and needs no Jacobian.
 
 from __future__ import annotations
 
+import warnings
+from typing import NamedTuple
+
 import numpy as np
 
 __all__ = [
@@ -28,6 +31,8 @@ __all__ = [
     "PCAScorer",
     "auroc",
     "auroc_ci",
+    "auroc_ci_detail",
+    "AurocCI",
 ]
 
 
@@ -150,20 +155,100 @@ def auroc(scores: np.ndarray, labels: np.ndarray) -> float:
     return float((ranks[labels].sum() - n_pos * (n_pos + 1) / 2.0) / (n_pos * n_neg))
 
 
-def auroc_ci(
-    scores: np.ndarray, labels: np.ndarray, n_boot: int = 2000, seed: int = 0
-) -> tuple[float, float, float]:
-    """Point estimate and a percentile bootstrap 95% interval.
+class AurocCI(NamedTuple):
+    """A bootstrap interval together with the evidence that it is trustworthy."""
+
+    point: float
+    lo: float
+    hi: float
+    n_valid: int
+    n_discarded: int
+
+
+def auroc_ci_detail(
+    scores: np.ndarray,
+    labels: np.ndarray,
+    n_boot: int = 2000,
+    seed: int = 0,
+    _stacklevel: int = 2,
+) -> AurocCI:
+    """Percentile bootstrap 95% interval, with single-class resamples excluded.
 
     A single AUROC without an interval invites a reader to treat 0.61 and 0.59 as
     different when the sample cannot distinguish them.
+
+    **Why single-class resamples are dropped rather than scored.** `auroc` returns
+    0.5 when a class is empty, which is the right guard for a point estimate but
+    the wrong input to a percentile. At the relation sizes this repo actually
+    measures — n = 12 to 20, minority class sometimes 1 — resampling n indices
+    with replacement leaves one class empty a large fraction of the time: with 1
+    correct answer out of 16, (15/16)^16 = 0.356 of all resamples. Feeding each of
+    those a hard 0.5 puts a spike of probability mass at exactly 0.5, which drags
+    whichever percentile bound lies on the far side of 0.5 toward it and can pin a
+    bound to 0.5 outright. The reported interval then describes the guard, not the
+    data. Resamples that cannot yield an AUROC are therefore discarded, and the
+    interval is taken over the survivors.
+
+    **What that interval does NOT show.** Conditioning on both classes surviving is
+    a different estimand from the unconditional sampling distribution of AUROC, and
+    neither is the distribution at fixed class sizes. At a minority class of one or
+    two, the surviving resamples are a handful of distinct configurations reweighted
+    by multiplicity, so the interval is a coarse quantisation of very little
+    evidence. Excluding the degenerate draws makes the interval honest about its
+    own width; it does not make the underlying sample larger.
+
+    In particular the survivors can collapse to one distinct value and return
+    `lo == hi`. That is a property of the percentile bootstrap at any n — perfect
+    separation gives a zero-width interval on 300 points too — but discarding the
+    degenerate draws makes it reachable at n = 16, where it means "every resample
+    that contained both classes ranked them the same way", not "certain". A
+    zero-width interval here is a report that the resampling has run out of
+    resolution and must be read alongside `n_valid` and the class sizes.
+
+    **When too little survives.** If fewer than `n_boot // 10` resamples are usable,
+    the interval is undefined at this sample size and `lo`/`hi` are returned as nan
+    rather than raised. A raise would abort a caller mid-table and every call site
+    in this repo unpacks three floats; a nan prints as `nan` and cannot be misread
+    as a tight interval, whereas any numeric fallback could. `point` is still
+    returned, since the point estimate does not depend on resampling.
+
+    `n_discarded` is returned so the contamination is visible, and a warning is
+    raised whenever it is non-zero.
     """
     rng = np.random.default_rng(seed)
     scores = np.asarray(scores, dtype=np.float64)
     labels = np.asarray(labels).astype(bool)
     n = len(scores)
-    boots = np.empty(n_boot)
-    for b in range(n_boot):
+    boots = []
+    for _ in range(n_boot):
         idx = rng.integers(0, n, n)
-        boots[b] = auroc(scores[idx], labels[idx])
-    return auroc(scores, labels), float(np.percentile(boots, 2.5)), float(np.percentile(boots, 97.5))
+        y = labels[idx]
+        if not y.any() or y.all():
+            continue
+        boots.append(auroc(scores[idx], y))
+
+    point = auroc(scores, labels)
+    n_valid, n_discarded = len(boots), n_boot - len(boots)
+    if n_discarded:
+        warnings.warn(
+            f"auroc_ci: {n_discarded}/{n_boot} bootstrap resamples were single-class "
+            f"at n={n} and were discarded",
+            stacklevel=_stacklevel,
+        )
+    if n_valid < max(1, n_boot // 10):
+        return AurocCI(point, float("nan"), float("nan"), n_valid, n_discarded)
+    b = np.asarray(boots)
+    return AurocCI(
+        point, float(np.percentile(b, 2.5)), float(np.percentile(b, 97.5)), n_valid, n_discarded
+    )
+
+
+def auroc_ci(
+    scores: np.ndarray, labels: np.ndarray, n_boot: int = 2000, seed: int = 0
+) -> tuple[float, float, float]:
+    """`(point, lo, hi)` from `auroc_ci_detail`, whose docstring carries the argument.
+
+    Kept at three values because every call site in this repo unpacks exactly three.
+    """
+    ci = auroc_ci_detail(scores, labels, n_boot, seed, _stacklevel=3)
+    return ci.point, ci.lo, ci.hi

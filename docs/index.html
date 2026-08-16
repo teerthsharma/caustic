@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Caustic — hallucination detection from the orbit partition</title>
-<meta name="description" content="A hallucination detector, a repair and a governor for language models, built from the orbit partition of a relation, with five proved bounds behind them.">
+<meta name="description" content="A hallucination detector, a repair and a governor for language models, built from the orbit partition of a relation, with eleven proved bounds behind them, one a no-go result.">
 <style>
   :root {
     --bg: #fdfdfc;
@@ -134,8 +134,7 @@
 <header class="masthead">
   <h1>Caustic</h1>
   <p class="thesis"><strong>A hallucination detector, a repair and a governor for language
-  models, built from the orbit partition of a relation, with five proved bounds behind
-  them.</strong></p>
+  models, built from the orbit partition of a relation, with eleven proved bounds behind them, one a no-go result.</strong></p>
   <p class="thesis">A model can know a fact and still be unable to reach it. When it cannot,
   distinct entities collapse onto one answer. That collapse is a topological invariant, it is
   measurable with no ground truth, and it is bounded from below by a theorem. The same bound then
@@ -153,7 +152,7 @@
     <li><a href="#partition">The orbit partition</a></li>
     <li><a href="#detect">Detection without ground truth</a></li>
     <li><a href="#branches">Five branches, and what each contributes</a></li>
-    <li><a href="#theorems">The five theorems, with proofs</a></li>
+    <li><a href="#theorems">The theorems, with proofs</a></li>
     <li><a href="#certify">What the method certifies</a></li>
     <li><a href="#neartie">The decision is a near-tie</a></li>
     <li><a href="#resonance"><strong>Stochastic resonance</strong></a></li>
@@ -293,6 +292,40 @@ condition under which a hallucination detector is of any use.</p>
 </table>
 </div>
 
+<div style="border-left:4px solid #2e9e5b;padding:0.75rem 1rem;margin:1.25rem 0;background:rgba(46,158,91,0.07)">
+<p><strong>What carries the weight here is the certificate, not this AUROC.</strong> For an
+injective relation on <em>n</em> entities producing <em>m</em> distinct answers, at least
+<em>n &minus; m</em> answers are provably wrong with no answer key consulted. Given the correct
+answers as a <em>set</em> &mdash; that Paris and Berlin are capitals, not which country each
+belongs to &mdash; the bound sharpens to <em>n &minus; |f(E) &cap; G|</em>, which hit the true
+error count <strong>exactly in 16 of 16</strong> measured rows across three model families while
+<em>n &minus; m</em> was loose in all 16.</p>
+<p>These are deterministic inequalities over a finite set: no sampling distribution, no minority
+class, nothing to be underpowered about. <strong>60 bound checks, 3 models, 0 violations.</strong>
+The AUROC below is measured on 12 to 20 entities with minority classes of 1, 3, 4 and 8, and is
+the weakest claim on this page rather than the headline.</p>
+</div>
+
+<div style="border-left:4px solid #d0a000;padding:0.75rem 1rem;margin:1.25rem 0;background:rgba(208,160,0,0.07)">
+<p><strong>Scope.</strong> These figures are measured on relations whose errors take the form
+of collapse — distinct entities pooling onto one answer. The detector detects
+<em>collapse</em>, not error. Where errors disperse instead, pooled AUROC falls to
+<strong>0.67–0.71 with bootstrap intervals spanning 0.5</strong>.</p>
+<p>Those intervals are underpowered rather than null: at the relation sizes used here
+(n = 12–20) a 95% bootstrap interval has power 0.00–0.38 to separate a true AUROC of 0.70
+from 0.50, and half-width 0.05 needs n ≈ 404. The minority classes behind the reported
+figures are 1, 3, 4 and 8 items.</p>
+<p>Injectivity is necessary and not sufficient. <code>currency</code> is injective at the
+token level and its collision AUROC is <strong>0.306</strong>, below chance, because the
+score averages five templates while the label comes from one. The precondition is also
+token-level: <code>small_capital</code> declares injectivity but
+<code>Asmara</code>/<code>Asuncion</code> share first token 1634 and
+<code>Lusaka</code>/<code>Ljubljana</code> share 444.</p>
+<p>Precision is proved and recall is not. A model that shuffles the correct answers among
+entities pools nothing, emits nothing inadmissible, scores zero accuracy, and is invisible to
+the certificate. Measured recall is 0.65–0.79.</p>
+</div>
+
 <p>Five templates per relation means five forward passes per entity, and no derivative of
 anything. The invariance half is close to published self-consistency work and is included as
 the baseline the other half has to beat; the equivariance half — penalising a model for giving
@@ -378,7 +411,42 @@ every spectral invariant. No determinant, smallest singular value, condition num
 spectral decay can tell the injective case from the collapsed one. It is the only result here
 that tells you what <em>not</em> to build.</p>
 
-<h2 id="theorems">5 · The five theorems, with proofs</h2>
+<h2 id="theorems">5 · The theorems, with proofs</h2>
+
+<div style="border-left:4px solid #6b5bd0;padding:0.75rem 1rem;margin:1.25rem 0;background:rgba(107,91,208,0.07)">
+<p><strong>Six theorems were proved after the original five below.</strong>
+<code>caustic/theorems.py</code> carries full statements, proofs and executable witnesses for all
+eleven; they are summarised here so a citation from the abstract finds a statement rather than a
+dangling number.</p>
+<ul>
+<li><strong>1*</strong> &mdash; given the correct answers as a <em>set</em> <code>G</code>,
+<code>errors &ge; n &minus; |f(E) &cap; G|</code>. Never weaker than Theorem 1, and stronger by
+exactly one answer when anything inadmissible is emitted. Exact in 16 of 16 measured rows.</li>
+<li><strong>2*</strong> &mdash; a receiver seeing all <code>T</code> paraphrases recovers at most
+<code>m_join / n</code>. The join is discrete under coherent context and collapses under
+<code>" the"&times;128</code>, so the bound separates a repairable regime from an unrepairable one.</li>
+<li><strong>6</strong> &mdash; the certified set has
+<code>precision &ge; (n &minus; m)/|S| = 1 &minus; b/|S|</code>, proved before it is evaluated.
+Realised 1.000 against floors of 0.667&ndash;0.950.</li>
+<li><strong>6*</strong> &mdash; tightened with <code>G</code> to <code>(|S| &minus; b_adm)/|S|</code>,
+counting only orbits whose shared answer could be somebody&rsquo;s truth. Takes the collapse rows
+from 0.950 to an exact 1.000.</li>
+<li><strong>7</strong> &mdash; <em>no-go.</em> There is an observation at which no sound recall floor
+is positive: a model that permutes the correct answers among entities. So no <em>constant</em>
+<code>c &gt; 0</code> bounds recall everywhere.</li>
+<li><strong>8</strong> &mdash; <code>recall &ge; (n &minus; m*)/n</code>. Positive at 99.3% of
+observations, attained, and zero exactly at Theorem 7&rsquo;s witness. Verified over 2,048,574
+exhaustive configurations with 0 violations.</li>
+</ul>
+<p>Theorem 8 corrects an error: Theorem 7 was first stated as &ldquo;no recall floor exists&rdquo;,
+which is false. The floor is <code>certified_error_floor</code>, already shipped and reported only
+as an error rate. Theorem 7&rsquo;s witness marks where it is zero, which makes it tight rather than
+absent.</p>
+<p>Theorems 1, 1*, 2, 2*, 6 and 6* are instances of one counting argument &mdash; a map constant on
+a block agrees with an injective truth on at most one member, and on none if the block&rsquo;s value
+is nobody&rsquo;s answer. They are separated because they are applied to different partitions and
+reported as different quantities, not because they need different proofs.</p>
+</div>
 
 <p class="meta">Every statement is elementary, and that is deliberate: the value is not in the
 difficulty of the proofs but in the fact that each is checkable against a measurement made in

@@ -40,7 +40,7 @@ from dataclasses import dataclass
 
 import numpy as np
 
-from .regime import RelationSpec, orbit_partition
+from .regime import OrbitReport, RelationSpec, orbit_partition
 from .theorems import certified_error_floor
 
 __all__ = ["PrefixVerdict", "PromptCost", "select_prefix", "prompt_cost"]
@@ -56,6 +56,15 @@ class PrefixVerdict:
     baseline_floor: float
     largest_orbit: int
     scores: dict[str, float]
+    winner_report: OrbitReport | None = None
+    """The winner's partition, so a caller need not re-run it.
+
+    Scoring already computed one `orbit_partition` per candidate, and the
+    winner's is the one a caller acts on. Discarding it costs `n` forward passes
+    to recompute — 4 of every 16 in a three-candidate competition — which is
+    pure waste at inference. Defaults to None so existing constructions keep
+    working.
+    """
 
     @property
     def improvement(self) -> float:
@@ -130,7 +139,7 @@ def _adjusted_rand(a, b) -> float:
 
 
 def select_prefix(
-    spec: RelationSpec, answer_fn, candidates: dict[str, str]
+    spec: RelationSpec, answer_fn, candidates: dict[str, str], batch_fn=None
 ) -> PrefixVerdict:
     """Run candidate prefixes in competition; pick the one that certifies fewest errors.
 
@@ -142,23 +151,70 @@ def select_prefix(
         spec: the relation. Must be injective, since the scorer is Theorem 1.
         answer_fn: prompt -> hashable answer. Must be deterministic.
         candidates: name -> prefix text. An entry named "none" is added if absent.
+        batch_fn: optional prompts -> answers, one call per candidate instead of
+            one per entity per candidate. Preferred when supplied. The prefix is
+            prepended to every prompt before the call, so a batch function only
+            has to answer the prompts it is handed.
     """
     if not spec.injective:
         raise ValueError(
             "the scorer is Theorem 1, which requires an injective relation; "
             "on a many-to-one relation a shared answer is correct and the score inverts"
         )
-    pool = {"none": "", **candidates}
+    if "none" in candidates:
+        # `pool = {"none": "", **candidates}` would take the caller's prefix TEXT
+        # while `scores` and `reports` stay seeded from the empty prefix, so
+        # `winner` would return a prefix that was never scored while
+        # `intervened` reported False and `winner_report` described a different
+        # partition. Refuse at the boundary rather than half-honour it.
+        raise ValueError(
+            '"none" is reserved for the empty prefix the governor always enters; '
+            "rename the candidate"
+        )
     n = len(spec.entities)
 
-    scores: dict[str, float] = {}
-    reports = {}
+    # The competition is decidable without running it when the baseline is
+    # already discrete. `certified_error_floor` is `(n - m) / n`, which is
+    # non-negative and zero exactly when `m = n`, and a candidate is selected
+    # only if it is STRICTLY below the baseline. A zero baseline therefore
+    # cannot be beaten, so every candidate forward pass would be wasted.
+    #
+    # This is the common case at inference — a model answering a relation it
+    # knows separates every entity — and skipping it takes the cost from
+    # `(c + 1) * n` passes to `n`. Candidates that never ran are absent from
+    # `scores` rather than recorded as 0.0, since an untested candidate is not
+    # a candidate that tied.
+    def partition(prefix: str):
+        if batch_fn is not None:
+            return orbit_partition(
+                spec, None, batch_fn=lambda ps, _p=prefix: batch_fn([_p + q for q in ps])
+            )
+        return orbit_partition(spec, lambda p, _p=prefix: answer_fn(_p + p))
+
+    base_report = partition("")
+    baseline = certified_error_floor(n, base_report.n_distinct)
+    if baseline == 0.0:
+        return PrefixVerdict(
+            winner="",
+            winner_name="none",
+            floor=baseline,
+            baseline_floor=baseline,
+            largest_orbit=base_report.largest_orbit,
+            scores={"none": baseline},
+            winner_report=base_report,
+        )
+
+    # The baseline partition is already in hand from the check above; scoring it
+    # again would cost `n` passes for a number that has not changed.
+    pool = {"none": "", **candidates}
+    scores: dict[str, float] = {"none": baseline}
+    reports = {"none": base_report}
     for name, prefix in pool.items():
-        rep = orbit_partition(spec, (lambda p, _pre=prefix: answer_fn(_pre + p)))
+        if name == "none":
+            continue
+        rep = partition(prefix)
         reports[name] = rep
         scores[name] = certified_error_floor(n, rep.n_distinct)
-
-    baseline = scores["none"]
     # Decline unless a candidate strictly beats doing nothing.
     best = min(
         (nm for nm in pool if nm != "none"),
@@ -175,6 +231,7 @@ def select_prefix(
         baseline_floor=baseline,
         largest_orbit=reports[best].largest_orbit,
         scores=scores,
+        winner_report=reports[best],
     )
 
 

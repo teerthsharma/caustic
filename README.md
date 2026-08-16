@@ -15,8 +15,9 @@
 
 <p align="center">
   <a href="LICENSE"><img src="https://img.shields.io/badge/license-MIT-blue?style=flat-square&color=00aaff" alt="MIT"></a>
-  <a href="#4-the-five-theorems"><img src="https://img.shields.io/badge/theorems-5%20proved-blueviolet?style=flat-square" alt="Theorems"></a>
-  <a href="#3-detection-without-ground-truth"><img src="https://img.shields.io/badge/equivariance%20AUROC-0.995-brightgreen?style=flat-square" alt="AUROC"></a>
+  <a href="#4-the-theorems"><img src="https://img.shields.io/badge/theorems-11%20proved%2C%201%20no--go-blueviolet?style=flat-square" alt="Theorems"></a>
+  <a href="#4-the-theorems"><img src="https://img.shields.io/badge/certificate-60%20checks%2C%203%20models%2C%200%20violations-brightgreen?style=flat-square" alt="Certificate"></a>
+  <a href="#3-detection-without-ground-truth"><img src="https://img.shields.io/badge/equivariance%20AUROC-0.995%20(collapse--type%20errors)-yellow?style=flat-square" alt="AUROC"></a>
   <a href="#7-stochastic-resonance"><img src="https://img.shields.io/badge/stochastic%20resonance-%2B0.333%20from%20noise-ff6b35?style=flat-square" alt="Resonance"></a>
   <a href="#8-system-prompts-are-never-neutral"><img src="https://img.shields.io/badge/neutral%20system%20prompts-0%20of%206-critical?style=flat-square" alt="Neutrality"></a>
   <a href="#3-detection-without-ground-truth"><img src="https://img.shields.io/badge/detector-5%20forward%20passes%2C%20no%20Jacobian-00aaff?style=flat-square" alt="Detector"></a>
@@ -24,6 +25,70 @@
   <a href="#16-validation"><img src="https://img.shields.io/badge/tests-163%20closed--form-brightgreen?style=flat-square" alt="Tests"></a>
   <a href="pyproject.toml"><img src="https://img.shields.io/badge/python-%E2%89%A5%203.10-yellow?style=flat-square" alt="Python"></a>
 </p>
+
+
+---
+
+## Scope: what this does not claim
+
+Collected here rather than scattered, because several of these correct statements made
+elsewhere in this document.
+
+**The detector detects collapse, not error.** AUROC 0.995 is measured on relations whose
+errors take the form of distinct entities pooling onto one answer. Where errors disperse —
+each entity wrong in its own way — pooled AUROC falls to 0.67–0.71 with bootstrap intervals
+spanning 0.5.
+
+**Those intervals are underpowered, not null.** Simulated at the relation sizes used here
+(n = 12–20), a 95% bootstrap interval has power 0.00–0.38 to separate a true AUROC of 0.70
+from 0.50; half-width 0.05 needs n ≈ 404. The minority classes behind the reported figures
+are 1, 3, 4 and 8 items. "The detector degrades on harder relations" is a claim the design
+cannot support; "the design cannot resolve whether it degrades" is what was measured.
+
+**The precondition is token-level, and one shipped relation violates it.** Theorem 1 needs the
+true answer map to be injective *in the encoding the answer function compares*, which for a
+top-1 token detector means distinct gold answers must have distinct first tokens.
+`small_capital` does not: `Asmara`/`Asuncion` share token 1634, `Lusaka`/`Ljubljana` share 444.
+`verify_injective` is the check. No published number is affected — 0 of 14 certified errors on
+that relation are collision artifacts — but the precondition held by luck rather than by
+construction.
+
+**Injectivity is necessary and not sufficient.** `currency` is injective at the token level,
+12 entities to 12 distinct gold tokens, and its collision AUROC is 0.306 — below chance. The
+cause is that the score averages over five templates while the label comes from one: template
+0 separates every entity there, so its own collision is 0 and the whole signal is borrowed
+from templates whose partition differs. `collision_scored` reports the scored template alone.
+
+**One accuracy figure is graded on first letters.** `element_symbol` scores the first token of
+the gold answer, and 4 of its 16 golds are multi-token — `Sb`→`' S'`, `Hg`→`' H'`, `Zr`→`' Z'`,
+`Rb`→`' R'`. For a quarter of that relation any word with the right first letter counts as
+correct, so its accuracy 1.000 is not established.
+
+**"Pooled, full context" is a single relation.** `element_symbol` has zero wrong answers at
+full context and never enters the pool, so that row is `small_capital` alone. Comparing it to
+the two-relation short-context pool does not support "context does not explain the gap".
+
+**`NEUTRAL_PREFIX` is off-topic but not chemistry-free.** It names chemical energy, carbon
+dioxide, oxygen and a reaction, and shares the word *chemical* with the probe template. A
+matched-length chemistry-stripped passage still repairs `element_symbol` (0.875), so the
+result is coherence rather than priming — but the prefix was described as containing no
+chemistry, and it does. Separately, the repair figure of 1.000 on `capital` belongs to a
+longer tiled passage; the exported constant gives 0.750.
+
+**Numeric answers break the observable on modern tokenizers, and the failure is total.**
+Qwen- and Llama-family tokenizers emit the space as its own token before a digit, so `" 1"`
+becomes `[220, 16]` and `" 20"` becomes `[220, 17, 15]`. Every numeric answer then shares first
+token 220: twenty distinct numbers collapse to **one** observable value, `m = 1` regardless of
+the model, and Theorem 1 would certify `n − 1 = 19` wrong answers on a model that answered all
+twenty correctly. `verify_injective` raises on exactly this and is the only thing between a
+caller and that false certification. The rule is per-tokenizer, not per-relation — the same
+numeric relation is perfectly injective under GPT-2, where `" 20"` is a single token. Word
+answers are safe; digits, symbols and punctuation are not.
+
+**Recall has no floor, and cannot.** Theorem 7 exhibits a model that shuffles the correct
+answers among entities: nothing pools, nothing is inadmissible, accuracy is zero, and the
+certificate is silent. Precision is proved; recall is measured at 0.65–0.79 and is
+unboundable in principle.
 
 ---
 
@@ -47,15 +112,37 @@ correct answer to compute, and once it resolves it is exactly preserved as conte
 adjusted Rand index `1.0000` from 128 to 512 tokens, while 15% of the individual answers still
 change.
 
-Four things follow. The failure is **detectable without ground truth**: an equivariance score
-computed from five forward passes, consulting no answer key and no Jacobian, reaches **AUROC
-0.995** on an injective relation. It is **bounded**: for an injective relation on `n` entities
-producing `m` distinct answers, at least `n − m` answers are provably wrong, and a pooled block
-of `k` entities caps *any* downstream recovery at `1/k`. It is **repairable**, and the repair
-measures its own effect size and flags the case where a prefix makes matters worse. And,
-because the bound needs no ground truth, it is **usable as an objective**: `select_prefix` runs
-candidate contexts in competition scored by the certified floor, always entering the empty
-prefix so it can decline to intervene.
+Four things follow, in order of what the evidence supports.
+
+The failure is **certified without ground truth**, and this is the result. For an injective
+relation on `n` entities producing `m` distinct answers, at least `n − m` are provably wrong.
+Given the correct answers as a *set* — that Paris and Berlin are capitals, not which country
+each belongs to — the bound sharpens to `n − |f(E) ∩ G|`, and that quantity hit the true error
+count **exactly in 16 of 16** measured rows across three model families, where `n − m` was loose
+in all 16. On `currency` under Qwen2.5-0.5B, `n − m` certifies 0 — it proves nothing — while the
+true count is 6 and the sharpened bound certifies 6. These are deterministic inequalities over a
+finite set: no sampling distribution, no minority class, nothing to be underpowered about. **60
+bound checks, 3 models, 0 violations.**
+
+The certificate is **actionable**, not just a count. The entities in collapsed orbits form a set
+whose precision is *proved before it is evaluated* — at least `1 − b/|S|`, and `1 − b_adm/|S|`
+when the answer set is supplied, which reached 1.000 in every row that had a flagged set. What
+cannot be bounded is recall: a model that shuffles the correct answers among entities collapses
+nothing, emits nothing inadmissible, scores zero accuracy, and is invisible by construction.
+That is a theorem, not a gap.
+
+Because the bound needs no ground truth, it is **usable as an objective**: `select_prefix` runs
+candidate contexts in competition scored by the certified floor, always entering the empty prefix
+so it can decline. And it is cheap enough to deploy — a relation whose partition is already
+discrete cannot be improved by any candidate, so the competition is decidable without running it,
+and the remaining prompts batch into one forward pass: **100 sequential passes reduced to 1**.
+
+The failure is also **detectable by a score**, and this is the weakest of the four. An
+equivariance score over five forward passes reaches **AUROC 0.995** on an injective relation
+whose errors are collapse. It detects *collapse*, not error; where errors disperse it falls to
+0.67–0.71 with intervals spanning chance, on minority classes of 1, 3, 4 and 8, at sample sizes
+with power 0.00–0.38 to tell 0.70 from 0.50. Read [Scope](#scope-what-this-does-not-claim)
+before relying on that figure.
 
 That last property produces the strongest result here. The wrong decision is a near-tie — the
 correct token trails the chosen one by **0.2526 standard deviations** — which is the textbook
@@ -73,7 +160,7 @@ and not one leaves the partition intact. And **averaging logits across an ensemb
 to 0.100 on `capital`, below a single pass, while majority vote never goes catastrophic — with
 a positive characteristic exponent, average ranks, not magnitudes.
 
-Five theorems stand behind the claims, one per branch of mathematics, each with a proof and an
+Eleven theorems stand behind the claims, each with a proof and an
 executable witness: topology, game theory, differential geometry, chaos theory, and a
 partial-differential-symmetry no-go which shows that no pointwise function of the Jacobian —
 determinant, smallest singular value, condition number, spectral decay — can detect pooling at
@@ -97,7 +184,7 @@ repair
 | [1](#1-the-failure-measured) | The failure, measured | The same 128 tokens, accuracy 1.000 and 0.000 |
 | [2](#2-the-orbit-partition) | The orbit partition | The shape of the failure, and that it is stable |
 | [3](#3-detection-without-ground-truth) | Detection without ground truth | Equivariance, AUROC 0.995, and its precondition |
-| [4](#4-the-five-theorems) | **The five theorems** | Full statements, proofs, and the chain between them |
+| [4](#4-the-theorems) | **The theorems** | Full statements, proofs, and the chain between them |
 | [5](#5-what-the-method-certifies) | What the method certifies | The floor, the ceiling, and what is not claimed |
 | [6](#6-the-decision-is-a-near-tie) | The decision is a near-tie | 0.2526 standard deviations, and why that matters |
 | [7](#7-stochastic-resonance) | **Stochastic resonance** | Noise raises accuracy by +0.333, and Theorem 1 picks the level |
@@ -184,7 +271,7 @@ its connected components. Three properties make it the right instrument:
   all entities, whether those answers are right or wrong.
 - **It cannot be confounded by accuracy.** Every entity is included regardless of correctness,
   so no class can collapse and no comparison inherits a moving base rate.
-- **It is what the theorems constrain.** `n − m` and `1/k` in [§4](#4-the-five-theorems) are
+- **It is what the theorems constrain.** `n − m` and `1/k` in [§4](#4-the-theorems) are
   both statements about blocks of this partition.
 
 `OrbitReport` carries it: `n_distinct` is the number of blocks, `largest_orbit` the size of the
@@ -264,7 +351,37 @@ and `select_prefix` raises rather than optimising a score it knows is inverted.
 
 ---
 
-## 4. The five theorems
+## 4. The theorems
+
+### Theorems added after the original five
+
+The five below were the original set. Six more were proved afterwards, and
+`caustic/theorems.py` carries the full statements, proofs and executable
+witnesses for all eleven. Summarised here so a reader following a citation from
+the abstract or from `caustic/guard.py` finds the statement rather than a
+dangling number.
+
+| | statement | status |
+|---|---|---|
+| **1\*** | Given the correct answers as a *set* `G`, `errors >= n - \|f(E) ∩ G\|`. Never weaker than Theorem 1, and stronger by exactly one answer when anything inadmissible is emitted. | proved; exact in 16 of 16 measured rows |
+| **2\*** | A receiver seeing all `T` paraphrases recovers at most `m_join / n`. | proved; join discrete under coherent context, collapsed under `" the"×128` |
+| **6** | The certified set `S = {e : k_e > 1}` has `precision(S) >= (n - m) / \|S\| = 1 - b/\|S\|`. | proved; realised 1.000 against floors 0.667–0.950 |
+| **6\*** | Tightened using `G`: `precision(S) >= (\|S\| - b_adm) / \|S\|`, counting only orbits whose shared answer could be somebody's truth. | proved; 0.950 → 1.000 on the collapse rows |
+| **7** | *No-go.* There is an observation at which no sound recall floor is positive — the model that permutes correct answers among entities. Hence no **constant** `c > 0` bounds recall everywhere. | proved by witness |
+| **8** | `recall(S) >= (n - m\*) / n`. Positive at 99.3% of observations, attained, and zero exactly at Theorem 7's witness. | proved; 0 violations over 2,048,574 exhaustive configurations |
+
+Theorem 8 is the correction of an error: Theorem 7 was first stated as "no
+recall floor exists", which is false. The floor is `certified_error_floor`, a
+function this repository already shipped and reported only as an error rate.
+Theorem 7's witness marks where that floor is zero, which makes it tight rather
+than absent.
+
+Theorems 1, 1\*, 2, 2\*, 6 and 6\* are all instances of one counting argument: a
+map constant on a block agrees with an injective truth on at most one member,
+and on none if the block's value is nobody's answer. They are separated because
+they are applied to different partitions and reported as different quantities,
+not because they need different proofs.
+
 
 Five results, one per branch, each with a proof and an executable witness in
 [`caustic/theorems.py`](caustic/theorems.py). Every statement is elementary, and that is

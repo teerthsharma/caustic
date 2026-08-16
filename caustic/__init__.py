@@ -1,21 +1,38 @@
 from .jacobian import block_map, exact_jacobian, singular_values, top_singular_values
+from .guard import GuardReport, guard
 from .governor import PrefixVerdict, PromptCost, select_prefix, prompt_cost
 from .bridge import CANONICAL_SEED, jl_matrix, project, jl_distortion_bound, comparable_ratio
 from .theorems import (
     orbit_error_bound,
+    recall_floor,
+    admissible_error_bound,
+    certified_precision_bound,
+    admissible_precision_bound,
     pooling_recovery_bound,
+    join_recovery_bound,
     path_integral_change,
     volume_decay_rate,
+    derangement_witness,
     winding_witness,
 )
-from .repair import NEUTRAL_PREFIX, RepairReport, repair_by_context, sweep_prefixes
-from .regime import RelationSpec, OrbitReport, orbit_partition, symmetry_scores
+from .repair import NEUTRAL_PREFIX, constrain_to, RepairReport, repair_by_context, sweep_prefixes
+from .regime import (
+    RelationSpec,
+    OrbitReport,
+    orbit_partition,
+    join_partition,
+    symmetry_scores,
+    verify_injective,
+    injective_subset,
+    admissible_distinct,
+)
 from .attractor import kaplan_yorke_dimension, embedding_bound, metric_entropy, spectrum_report
 from .cocycle import lyapunov_spectrum, finite_time_spectrum
 from .oseledets import growth_filtration, filtration_entropy, tolerance_sweep
 from .detect import auroc, auroc_ci, MahalanobisScorer, PCAScorer
 from .spectrum import BULK, log_volume, sigma_max, stable_rank, summarize, tail_alpha
 from .report import table, emit
+from .stats import permutation_auroc, holm
 
 __version__ = "0.1.0"
 
@@ -23,6 +40,8 @@ __all__ = [
     "prompt_cost",
     "select_prefix",
     "PromptCost",
+    "GuardReport",
+    "guard",
     "PrefixVerdict",
     "comparable_ratio",
     "jl_distortion_bound",
@@ -33,15 +52,26 @@ __all__ = [
     "repair_by_context",
     "RepairReport",
     "NEUTRAL_PREFIX",
+    "constrain_to",
+    "derangement_witness",
     "winding_witness",
     "volume_decay_rate",
     "path_integral_change",
     "pooling_recovery_bound",
+    "join_recovery_bound",
     "orbit_error_bound",
+    "recall_floor",
+    "admissible_error_bound",
+    "certified_precision_bound",
+    "admissible_precision_bound",
     "RelationSpec",
     "OrbitReport",
     "orbit_partition",
+    "join_partition",
     "symmetry_scores",
+    "verify_injective",
+    "injective_subset",
+    "admissible_distinct",
     "kaplan_yorke_dimension",
     "embedding_bound",
     "metric_entropy",
@@ -67,4 +97,6 @@ __all__ = [
     "tail_alpha",
     "table",
     "emit",
+    "permutation_auroc",
+    "holm",
 ]

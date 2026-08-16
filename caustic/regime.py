@@ -32,17 +32,31 @@ single free-form generation, does not detect a false statement about an entity i
 was not given, and requires the relation to be injective — distinct entities must
 genuinely warrant distinct answers, or a collapsed orbit is correct behaviour and
 the signal inverts. `RelationSpec.injective` records that precondition rather than
-leaving it implicit.
+leaving it implicit, and `verify_injective` checks it at the level the experiments
+actually score it: the FIRST TOKEN of the gold answer. Injectivity of the relation
+does not survive that composition — "Asmara" and "Asuncion" are different capitals
+sharing a first token — and where it fails the bound certifies an error that is
+not one.
 """
 
 from __future__ import annotations
 
 import itertools
+from collections.abc import Callable
 from dataclasses import dataclass, field
 
 import numpy as np
 
-__all__ = ["RelationSpec", "OrbitReport", "orbit_partition", "symmetry_scores"]
+__all__ = [
+    "RelationSpec",
+    "OrbitReport",
+    "orbit_partition",
+    "symmetry_scores",
+    "verify_injective",
+    "injective_subset",
+    "admissible_distinct",
+    "join_partition",
+]
 
 
 @dataclass(frozen=True)
@@ -58,7 +72,14 @@ class RelationSpec:
             Equivariance is undefined when this is False — many countries share a
             continent, so a collapsed orbit is then correct and the collision
             score inverts. Measured: 0.995 AUROC on an injective relation against
-            0.273 on a many-to-one one.
+            0.273 on a many-to-one one. This flag is a claim, not a check;
+            `verify_injective` is the check.
+
+    Entities must be distinct and non-blank. `orbit_partition` counts a repeated
+    entity twice and puts both copies in one orbit, which raises `largest_orbit`
+    and lowers `n_distinct`, so a caller typo makes `certified_errors` claim
+    errors that do not exist. A blank entity formats into a prompt the relation
+    does not describe, and its answer is then partitioned as if it did.
     """
 
     templates: tuple[str, ...]
@@ -72,6 +93,17 @@ class RelationSpec:
             raise ValueError("every template must contain '{e}'")
         if len(self.entities) < 2:
             raise ValueError("at least two entities are required to form a partition")
+        blank = [e for e in self.entities if not e.strip()]
+        if blank:
+            raise ValueError(f"entity is empty or whitespace-only: {blank[0]!r}")
+        seen: set[str] = set()
+        for e in self.entities:
+            if e in seen:
+                raise ValueError(
+                    f"duplicate entity {e!r}: orbit_partition would count it twice, "
+                    "inflating largest_orbit and therefore certified_errors"
+                )
+            seen.add(e)
 
 
 @dataclass
@@ -120,6 +152,36 @@ class OrbitReport:
         return self.certified_errors / len(self.entities)
 
     @property
+    def certified_set(self) -> list[str]:
+        """The entities a caller abstains on: those in non-singleton blocks.
+
+        Theorem 1 returns a count, and a count is not actionable — a caller has
+        to know *which* entities to withhold. Every error the count certifies
+        lies in this set, since a singleton block contributes nothing to
+        `n - m`. Empty for a non-injective relation, where sharing an answer is
+        not evidence of error.
+
+        Order follows `entities`, so the output is stable across runs.
+        """
+        if not self.injective:
+            return []
+        shared = {a for a, v in self.orbits.items() if len(v) > 1}
+        return [e for e, a in zip(self.entities, self.answers) if a in shared]
+
+    @property
+    def certified_precision(self) -> float | None:
+        """Theorem 6. Lower bound on the precision of `certified_set`.
+
+        `(n - m) / |S|`, computed from the partition with no ground truth. None
+        when the set is empty, which is the `m = n` case where the certificate
+        is silent — precision of an empty set is undefined, not perfect.
+        """
+        flagged = len(self.certified_set)
+        if flagged == 0:
+            return None
+        return self.certified_errors / flagged
+
+    @property
     def collapsed(self) -> bool:
         """True when the partition is degenerate for an injective relation.
 
@@ -142,7 +204,9 @@ class OrbitReport:
         return head + "  COLLAPSED: " + "; ".join(", ".join(g) for g in merged)
 
 
-def orbit_partition(spec: RelationSpec, answer_fn) -> OrbitReport:
+def orbit_partition(
+    spec: RelationSpec, answer_fn, batch_fn=None, verify_batch: bool = True
+) -> OrbitReport:
     """Partition entities by the answer the model gives, using the first template.
 
     Args:
@@ -150,8 +214,82 @@ def orbit_partition(spec: RelationSpec, answer_fn) -> OrbitReport:
         answer_fn: maps a prompt string to a hashable answer, typically the
             argmax token id. Any deterministic function works; determinism is the
             caller's responsibility and a sampled answer makes the partition noise.
+            May be None when `batch_fn` is given.
+        verify_batch: check the batched path against a one-element batch before
+            trusting it. On by default; see the failure it catches below.
+        batch_fn: maps a LIST of prompts to a list of answers, one per prompt, in
+            the order received. Preferred when supplied, since the prompts are
+            independent by construction and serialising them is an artefact of
+            the callback signature rather than of the mathematics.
+
+    **Why the batched path exists.** Measured on Qwen2.5-0.5B over 20
+    country-capital prompts, one batched forward pass against twenty sequential
+    ones:
+
+        condition        sequential   batched   speedup   answers identical
+        no prefix          703.63 ms  42.36 ms   16.61x   yes
+        `" the" x 128`     760.05 ms 446.94 ms    1.70x   yes
+
+    The partition is identical either way, so this is a cost change and nothing
+    else. The gain is largest exactly where a guard runs most often — short
+    prompts, healthy relation — because a long shared prefix already saturates
+    the device.
+
+    **The padding trap, which is silent.** A batched caller reads the answer at
+    `logits[:, -1, :]`, so the tokenizer must pad on the LEFT. With right
+    padding the final position is a pad token, every answer is the model's
+    continuation of padding, and the resulting partition is well-formed and
+    nobody's answers. Set `tokenizer.padding_side = "left"` before batching, and
+    check the batched answers against the sequential ones once on a small set —
+    they must agree exactly.
+
+    Raises:
+        ValueError: if neither function is given, since an empty partition would
+            certify zero errors over nothing; or if `batch_fn` returns a list
+            whose length does not match the entity count, which would otherwise
+            zip short and silently drop entities.
     """
-    answers = [answer_fn(spec.templates[0].format(e=e)) for e in spec.entities]
+    prompts = [spec.templates[0].format(e=e) for e in spec.entities]
+    if batch_fn is not None:
+        answers = list(batch_fn(prompts))
+        if len(answers) != len(spec.entities):
+            raise ValueError(
+                f"batch_fn must return one answer per entity; got {len(answers)} "
+                f"for {len(spec.entities)} entities"
+            )
+        if verify_batch:
+            # A one-element batch has nothing to pad to, so it returns the true
+            # answer under any padding side. Left-padded, the batched answer for
+            # the same prompt must match it; right-padded it will not, whenever
+            # this prompt is shorter than the longest in the batch. The same
+            # comparison catches a batch_fn that reorders its input, which the
+            # length check above cannot see.
+            #
+            # Costs one extra prompt out of n. It is on by default because both
+            # failures are silent: the resulting partition is well-formed and
+            # nobody's answers, and no downstream check can fail on it.
+            # Probe the SHORTEST prompt, not the first. Right padding corrupts
+            # a prompt in proportion to how far it falls short of the longest,
+            # so the shortest is the one guaranteed to be affected; probing the
+            # first misses the failure entirely whenever the first happens to be
+            # the longest, which it was on this repository's own capital
+            # relation.
+            j = min(range(len(prompts)), key=lambda i: (len(prompts[i]), i))
+            probe = list(batch_fn([prompts[j]]))
+            if len(probe) != 1 or probe[0] != answers[j]:
+                raise ValueError(
+                    "batched answer for the first prompt does not match the same "
+                    "prompt answered alone. The tokenizer must pad on the left, "
+                    "since the answer is read at logits[:, -1, :]; a right-padded "
+                    "batch answers at a pad position. This also fires if batch_fn "
+                    "returns answers out of the order it received them. Pass "
+                    "verify_batch=False to skip this check once you have verified "
+                    "both."
+                )
+    elif answer_fn is not None:
+        answers = [answer_fn(p) for p in prompts]
+    else:
+        raise ValueError("one of answer_fn or batch_fn is required")
     orbits: dict[int, list[str]] = {}
     for e, a in zip(spec.entities, answers):
         orbits.setdefault(a, []).append(e)
@@ -166,7 +304,203 @@ def orbit_partition(spec: RelationSpec, answer_fn) -> OrbitReport:
     )
 
 
-def symmetry_scores(spec: RelationSpec, answer_fn) -> dict[str, dict[str, float]]:
+def verify_injective(
+    spec: RelationSpec,
+    gold: dict[str, str],
+    first_token_fn: Callable[[str], int],
+) -> list[tuple[str, str]]:
+    """Check the precondition `injective=True` asserts, at the level it is scored.
+
+    Every experiment in this repository reads the model's answer as the argmax
+    token id of the next token and judges it against the FIRST token of the gold
+    string. The map the orbit error bound is applied to is therefore
+    `first_token . gold`, not `gold`. Injectivity of `gold` does not imply
+    injectivity of the composite: "Asmara" and "Asuncion" are different capitals
+    that begin with the same token, and two entities whose gold answers collide
+    there are forced into one orbit however well the model performs. The bound
+    then counts a FALSE certified error — a wrong answer where both answers may
+    in fact be right.
+
+    `RelationSpec.injective` is a caller-supplied boolean that nothing verifies.
+    This function turns it from a claim into something checkable: an empty return
+    means the precondition genuinely holds under the given tokenisation, and any
+    returned pair is an entity pair on which `certified_errors` may over-count.
+    The over-count is bounded by `n - (distinct first tokens)`, not by the number
+    of pairs: three entities on one token yield three pairs but can inflate
+    `n - m` by only two.
+
+    Args:
+        spec: the relation whose `entities` are checked.
+        gold: entity -> its correct answer string. Must cover every entity.
+        first_token_fn: maps an answer string to its first token id. Passed in
+            rather than imported so this module stays free of transformers and
+            testable with a stub.
+
+    Returns:
+        Entity pairs sharing a first token, in `itertools.combinations` order
+        over `spec.entities`. Empty when the composite map is injective.
+
+    Raises:
+        ValueError: if `gold` does not cover every entity in `spec.entities`.
+    """
+    missing = [e for e in spec.entities if e not in gold]
+    if missing:
+        raise ValueError(f"gold is missing {len(missing)} entities, first: {missing[0]!r}")
+    ids = {e: first_token_fn(gold[e]) for e in spec.entities}
+    return [
+        (a, b) for a, b in itertools.combinations(spec.entities, 2) if ids[a] == ids[b]
+    ]
+def injective_subset(spec: RelationSpec, gold, first_token_fn):
+    """Restrict a relation to the entities the observable can actually separate.
+
+    `verify_injective` reports that two gold answers collide at the encoding
+    `answer_fn` compares, and a caller then skips the relation entirely. That
+    discards most of a usable relation: `small_capital` has 18 entities and 16
+    distinct gold first tokens under Qwen2.5-0.5B, so 16 of them satisfy the
+    precondition and only the two colliding pairs do not.
+
+    Keeping one entity per colliding group leaves a relation on which Theorem 1
+    and everything descending from it apply. Which member survives is arbitrary,
+    so it is the first in the caller's order, making the restriction
+    deterministic across runs.
+
+    **This is a scope reduction, not a repair.** The bound holds on the returned
+    entities and says nothing about the removed ones — those answers are still
+    produced and still unexamined. A caller reporting a certified error rate must
+    report it against the restricted count, not the original.
+
+    A genuinely many-to-one relation is not rescued by this. `continent` has 12
+    entities and 6 distinct answers under every tokenizer, because Europe really
+    is correct for two of those countries; restricting it leaves 6 entities and
+    changes what the relation means. The distinction worth drawing is between a
+    tokenizer artifact, which this repairs, and a property of the relation,
+    which it does not.
+
+    Args:
+        spec: the relation to restrict.
+        gold: entity -> correct answer, covering every entity in `spec`.
+        first_token_fn: the encoding `answer_fn` compares, mapping an answer to
+            a hashable key. For a top-1 token detector, the first token id.
+
+    Returns:
+        `(restricted_spec, dropped)` where `dropped` lists the removed entities
+        in the order they were removed.
+
+    Raises:
+        ValueError: if `gold` does not cover every entity, since a missing key
+            would silently drop an entity as though it had collided; or if fewer
+            than two entities survive, which is not a scope reduction but a
+            relation the observable cannot measure at all.
+    """
+    missing = [e for e in spec.entities if e not in gold]
+    if missing:
+        raise ValueError(f"gold must cover every entity; missing {missing[:3]}")
+    seen: dict = {}
+    kept, dropped = [], []
+    for e in spec.entities:
+        key = first_token_fn(gold[e])
+        if key in seen:
+            dropped.append(e)
+        else:
+            seen[key] = e
+            kept.append(e)
+    if len(kept) < 2:
+        raise ValueError(
+            f"only {len(kept)} entity survives the restriction; a partition needs "
+            "two, so this observable cannot measure this relation at all"
+        )
+    return RelationSpec(spec.templates, tuple(kept), spec.injective), dropped
+
+
+def admissible_distinct(answers, gold_keys, n_entities: int | None = None) -> int:
+    """`m* = |f(E) ∩ G|`, the input to Theorem 1*.
+
+    Args:
+        answers: the observed answers, one per entity, as `OrbitReport.answers`
+            gives them. Duplicates are expected — this counts distinct values.
+        gold_keys: the set of correct answers *as a set*, in the same encoding
+            `answer_fn` returns. For a top-1 token id detector that is the set
+            of first tokens of the gold strings.
+
+    The pairing is not needed and must not be supplied: knowing that Paris and
+    Berlin are capitals is enough, and knowing which country each belongs to
+    would be ground truth. That is the whole reason the certificate survives
+    where an answer key does not exist.
+
+    Counting distinct rather than total matters. An orbit of size `s` sharing an
+    admissible answer can contain at most one correct entity, so it contributes
+    one to the ceiling on `|C|`, not `s`.
+
+    **Pass `n_entities` and the certificate checks its own precondition.** This
+    is the one thing Theorem 1 cannot do. `|G| < n` says two entities share a
+    correct answer *at the encoding being compared*, so `R` is not injective
+    there and the bound does not hold. Theorem 1 sees only the partition and has
+    no way to notice; Theorem 1* is handed `G`, so `len(set(gold_keys)) < n` is
+    exactly the violation, and it is one comparison away.
+
+    The failure it catches is measured, not hypothetical. On `small_capital`,
+    `Asmara` and `Asuncion` both encode to token 1634 and `Lusaka` and
+    `Ljubljana` both to 444. Restrict that relation to those four entities and
+    the model answers each pair with its shared token, scoring 4 of 4 correct,
+    while `orbit_error_bound(4, 2)` certifies 2 wrong. A one-sided bound that
+    fires on a perfect answer set is not one-sided.
+
+    Raises:
+        ValueError: if `n_entities` is given and `gold_keys` holds fewer than
+            `n_entities` distinct values.
+    """
+    gold = set(gold_keys)
+    if n_entities is not None and len(gold) < n_entities:
+        raise ValueError(
+            f"gold_keys holds {len(gold)} distinct values for {n_entities} "
+            "entities, so the relation is not injective at this encoding and "
+            "Theorem 1* does not apply; see regime.verify_injective"
+        )
+    return len(set(answers) & gold)
+def join_partition(spec: RelationSpec, answer_fn) -> OrbitReport:
+    """Partition entities by the FULL answer tuple across every template.
+
+    This is the common refinement of the per-template partitions, `H0` of the
+    relation "agrees under every paraphrase". Two entities share a block only if
+    every template gives them the same answer, so the join is at least as fine as
+    any component and is what a receiver seeing all `T` answers can distinguish.
+
+    `orbit_partition` uses `templates[0]` because that is the answer a caller
+    ships. `join_partition` is not a competitor to it: it measures what is
+    RECOVERABLE rather than what was answered, which is the quantity Theorem 2*
+    bounds and the reason repair is possible at all.
+
+    Costs the same `T` forward passes per entity that `symmetry_scores` already
+    makes, and returns an `OrbitReport` so the same properties apply. Note that
+    `certified_errors` on that report is not Theorem 1's certificate for any
+    shipped answer — the join is not an answer map — so read `n_distinct` and
+    `largest_orbit` from it, not the certificate.
+
+    Raises:
+        ValueError: with fewer than two templates, where the join is just the
+            partition and `orbit_partition` is the function the caller wants.
+    """
+    if len(spec.templates) < 2:
+        raise ValueError("the join needs at least two templates; use orbit_partition")
+    answers = [
+        tuple(answer_fn(t.format(e=e)) for t in spec.templates) for e in spec.entities
+    ]
+    orbits: dict[tuple, list[str]] = {}
+    for e, a in zip(spec.entities, answers):
+        orbits.setdefault(a, []).append(e)
+    return OrbitReport(
+        entities=tuple(spec.entities),
+        answers=tuple(answers),
+        injective=spec.injective,
+        n_distinct=len(orbits),
+        largest_orbit=max(len(v) for v in orbits.values()),
+        orbits=orbits,
+    )
+
+
+def symmetry_scores(
+    spec: RelationSpec, answer_fn, scored_template: int = 0
+) -> dict[str, dict[str, float]]:
     """Per-entity invariance and collision, neither of which uses a gold answer.
 
     invariance   agreement across paraphrases of the same fact, in [0, 1].
@@ -177,12 +511,52 @@ def symmetry_scores(spec: RelationSpec, answer_fn) -> dict[str, dict[str, float]
                  the one that reached 0.995 AUROC on injective relations, and it
                  is meaningless when `spec.injective` is False.
 
+    collision_scored
+                 the same quantity computed on `scored_template` ALONE, which is
+                 the template whose answer a caller actually acts on. Prefer it
+                 whenever the label is that template's correctness.
+
+    **Why `collision` and `collision_scored` are different numbers, and when the
+    averaged one is unsafe.** `orbit_partition` acts on `templates[0]`, but
+    `collision` averages over all `T` templates. Each template induces its own
+    partition, so the average can be dominated by templates whose partition is
+    nothing like the one being acted on. Measured on Qwen2.5-0.5B, seed 0:
+
+        currency, 12 entities, accuracy 0.500
+            template   m_i   collisions   AUROC(collision -> wrong)
+                0       12        0            0.5000
+                2        5        9            0.4028
+                4        4        9            0.4167
+            averaged              12           0.3056
+
+    Template 0 separates every entity, so `collision_scored` is 0 for all of
+    them and scores 0.5000 — silent, which is correct, since Theorem 1 certifies
+    nothing when `m = n`. The averaged score borrows entirely from templates 2
+    and 4, and lands at 0.3056: below chance, and below every one of its own
+    five components. On `capital`, where template 0 does collapse and the other
+    templates agree with it, averaging instead helps (0.8889 -> 0.9949).
+
+    So averaging is safe when the partitions agree and harmful when they do not,
+    and nothing in the averaged number tells a caller which case they are in.
+    A score that is silent is strictly better than one that is anti-correlated.
+
+    Args:
+        scored_template: index of the template whose partition the caller acts
+            on. Defaults to 0, matching `orbit_partition`.
+
     Raises:
         ValueError: if fewer than two templates are given, since invariance is
-            undefined on one.
+            undefined on one; or if `scored_template` is out of range. Clamping
+            an out-of-range index to 0 would silently reintroduce the mismatch
+            this argument exists to remove.
     """
     if len(spec.templates) < 2:
         raise ValueError("invariance needs at least two templates")
+    if not 0 <= scored_template < len(spec.templates):
+        raise ValueError(
+            f"scored_template must lie in [0, {len(spec.templates) - 1}]; "
+            f"got {scored_template}"
+        )
 
     table = {
         e: [answer_fn(t.format(e=e)) for t in spec.templates] for e in spec.entities
@@ -199,5 +573,14 @@ def symmetry_scores(spec: RelationSpec, answer_fn) -> dict[str, dict[str, float]
                 ]
             )
         )
-        out[e] = {"invariance": inv, "collision": col, "score": inv - col}
+        j = scored_template
+        col_scored = float(
+            np.mean([table[o][j] == mine[j] for o in spec.entities if o != e])
+        )
+        out[e] = {
+            "invariance": inv,
+            "collision": col,
+            "collision_scored": col_scored,
+            "score": inv - col,
+        }
     return out
