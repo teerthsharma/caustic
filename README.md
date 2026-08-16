@@ -15,8 +15,8 @@
 
 <p align="center">
   <a href="LICENSE"><img src="https://img.shields.io/badge/license-MIT-blue?style=flat-square&color=00aaff" alt="MIT"></a>
-  <a href="#4-the-five-theorems"><img src="https://img.shields.io/badge/theorems-5%20proved-blueviolet?style=flat-square" alt="Theorems"></a>
-  <a href="#3-detection-without-ground-truth"><img src="https://img.shields.io/badge/equivariance%20AUROC-0.995-brightgreen?style=flat-square" alt="AUROC"></a>
+  <a href="#4-the-five-theorems"><img src="https://img.shields.io/badge/theorems-9%20proved%2C%202%20no--go-blueviolet?style=flat-square" alt="Theorems"></a>
+  <a href="#3-detection-without-ground-truth"><img src="https://img.shields.io/badge/equivariance%20AUROC-0.995%20(collapse--type%20errors)-yellow?style=flat-square" alt="AUROC"></a>
   <a href="#7-stochastic-resonance"><img src="https://img.shields.io/badge/stochastic%20resonance-%2B0.333%20from%20noise-ff6b35?style=flat-square" alt="Resonance"></a>
   <a href="#8-system-prompts-are-never-neutral"><img src="https://img.shields.io/badge/neutral%20system%20prompts-0%20of%206-critical?style=flat-square" alt="Neutrality"></a>
   <a href="#3-detection-without-ground-truth"><img src="https://img.shields.io/badge/detector-5%20forward%20passes%2C%20no%20Jacobian-00aaff?style=flat-square" alt="Detector"></a>
@@ -24,6 +24,60 @@
   <a href="#16-validation"><img src="https://img.shields.io/badge/tests-163%20closed--form-brightgreen?style=flat-square" alt="Tests"></a>
   <a href="pyproject.toml"><img src="https://img.shields.io/badge/python-%E2%89%A5%203.10-yellow?style=flat-square" alt="Python"></a>
 </p>
+
+
+---
+
+## Scope: what this does not claim
+
+Collected here rather than scattered, because several of these correct statements made
+elsewhere in this document.
+
+**The detector detects collapse, not error.** AUROC 0.995 is measured on relations whose
+errors take the form of distinct entities pooling onto one answer. Where errors disperse —
+each entity wrong in its own way — pooled AUROC falls to 0.67–0.71 with bootstrap intervals
+spanning 0.5.
+
+**Those intervals are underpowered, not null.** Simulated at the relation sizes used here
+(n = 12–20), a 95% bootstrap interval has power 0.00–0.38 to separate a true AUROC of 0.70
+from 0.50; half-width 0.05 needs n ≈ 404. The minority classes behind the reported figures
+are 1, 3, 4 and 8 items. "The detector degrades on harder relations" is a claim the design
+cannot support; "the design cannot resolve whether it degrades" is what was measured.
+
+**The precondition is token-level, and one shipped relation violates it.** Theorem 1 needs the
+true answer map to be injective *in the encoding the answer function compares*, which for a
+top-1 token detector means distinct gold answers must have distinct first tokens.
+`small_capital` does not: `Asmara`/`Asuncion` share token 1634, `Lusaka`/`Ljubljana` share 444.
+`verify_injective` is the check. No published number is affected — 0 of 14 certified errors on
+that relation are collision artifacts — but the precondition held by luck rather than by
+construction.
+
+**Injectivity is necessary and not sufficient.** `currency` is injective at the token level,
+12 entities to 12 distinct gold tokens, and its collision AUROC is 0.306 — below chance. The
+cause is that the score averages over five templates while the label comes from one: template
+0 separates every entity there, so its own collision is 0 and the whole signal is borrowed
+from templates whose partition differs. `collision_scored` reports the scored template alone.
+
+**One accuracy figure is graded on first letters.** `element_symbol` scores the first token of
+the gold answer, and 4 of its 16 golds are multi-token — `Sb`→`' S'`, `Hg`→`' H'`, `Zr`→`' Z'`,
+`Rb`→`' R'`. For a quarter of that relation any word with the right first letter counts as
+correct, so its accuracy 1.000 is not established.
+
+**"Pooled, full context" is a single relation.** `element_symbol` has zero wrong answers at
+full context and never enters the pool, so that row is `small_capital` alone. Comparing it to
+the two-relation short-context pool does not support "context does not explain the gap".
+
+**`NEUTRAL_PREFIX` is off-topic but not chemistry-free.** It names chemical energy, carbon
+dioxide, oxygen and a reaction, and shares the word *chemical* with the probe template. A
+matched-length chemistry-stripped passage still repairs `element_symbol` (0.875), so the
+result is coherence rather than priming — but the prefix was described as containing no
+chemistry, and it does. Separately, the repair figure of 1.000 on `capital` belongs to a
+longer tiled passage; the exported constant gives 0.750.
+
+**Recall has no floor, and cannot.** Theorem 7 exhibits a model that shuffles the correct
+answers among entities: nothing pools, nothing is inadmissible, accuracy is zero, and the
+certificate is silent. Precision is proved; recall is measured at 0.65–0.79 and is
+unboundable in principle.
 
 ---
 
@@ -49,7 +103,9 @@ change.
 
 Four things follow. The failure is **detectable without ground truth**: an equivariance score
 computed from five forward passes, consulting no answer key and no Jacobian, reaches **AUROC
-0.995** on an injective relation. It is **bounded**: for an injective relation on `n` entities
+0.995** on an injective relation whose errors are collapse. It detects *collapse*, not error,
+and where errors disperse instead it falls to 0.67–0.71 with intervals spanning chance —
+see [Scope](#scope-what-this-does-not-claim) before relying on the figure. It is **bounded**: for an injective relation on `n` entities
 producing `m` distinct answers, at least `n − m` answers are provably wrong, and a pooled block
 of `k` entities caps *any* downstream recovery at `1/k`. It is **repairable**, and the repair
 measures its own effect size and flags the case where a prefix makes matters worse. And,
