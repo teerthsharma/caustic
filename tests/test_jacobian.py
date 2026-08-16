@@ -125,11 +125,26 @@ def test_power_iteration_is_deterministic_across_calls(W, h_in):
 
 
 def test_power_iteration_seed_none_still_returns_the_right_answer(W, h_in):
-    """Opting out of the seed must change the start, not the answer."""
+    """Opting out of the seed must change the start, not the answer.
+
+    `iters` is 200 rather than 80 because the claim is only true once power
+    iteration has converged, and at 80 it has not converged far enough to be
+    safe from the start vector. Error decays as `(sigma_{k+1}/sigma_k)^(2*iters)`.
+    This fixture's spectrum starts `[10.504, 10.163, 9.577, 9.156, 8.479, ...]`,
+    so the gap at k=4 is `8.4792/9.1563 = 0.92605` and 80 iterations reach
+    `0.92605**160 = 4.6e-6` against a threshold of `1e-5` — a factor of 2.2,
+    with a measured worst case of 3.0e-6 over 300 unseeded runs.
+
+    Living inside a factor of two of its own tolerance makes the outcome depend
+    on the global RNG state left by whatever ran before it, which is how a suite
+    becomes order-dependent in CI while staying unreproducible in isolation. At
+    200 iterations convergence is `0.92605**400 ~ 1e-14`, so the assertion tests
+    the estimator rather than the draw.
+    """
     block = LinearBlock(W)
     exact = singular_values(exact_jacobian(block, h_in, pos=T - 1)).cpu().numpy()[:4]
     for _ in range(5):
-        est = top_singular_values(block, h_in, pos=T - 1, k=4, iters=80, seed=None).cpu().numpy()
+        est = top_singular_values(block, h_in, pos=T - 1, k=4, iters=200, seed=None).cpu().numpy()
         assert np.abs(est - exact).max() / exact.max() < 1e-5
 
 
