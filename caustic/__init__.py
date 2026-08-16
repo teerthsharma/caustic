@@ -4,6 +4,7 @@ from .bridge import CANONICAL_SEED, jl_matrix, project, jl_distortion_bound, com
 from .theorems import (
     orbit_error_bound,
     certified_precision_bound,
+    admissible_precision_bound,
     pooling_recovery_bound,
     path_integral_change,
     volume_decay_rate,
@@ -40,6 +41,7 @@ __all__ = [
     "pooling_recovery_bound",
     "orbit_error_bound",
     "certified_precision_bound",
+    "admissible_precision_bound",
     "RelationSpec",
     "OrbitReport",
     "orbit_partition",
