@@ -166,7 +166,9 @@ def orbit_partition(spec: RelationSpec, answer_fn) -> OrbitReport:
     )
 
 
-def symmetry_scores(spec: RelationSpec, answer_fn) -> dict[str, dict[str, float]]:
+def symmetry_scores(
+    spec: RelationSpec, answer_fn, scored_template: int = 0
+) -> dict[str, dict[str, float]]:
     """Per-entity invariance and collision, neither of which uses a gold answer.
 
     invariance   agreement across paraphrases of the same fact, in [0, 1].
@@ -177,12 +179,52 @@ def symmetry_scores(spec: RelationSpec, answer_fn) -> dict[str, dict[str, float]
                  the one that reached 0.995 AUROC on injective relations, and it
                  is meaningless when `spec.injective` is False.
 
+    collision_scored
+                 the same quantity computed on `scored_template` ALONE, which is
+                 the template whose answer a caller actually acts on. Prefer it
+                 whenever the label is that template's correctness.
+
+    **Why `collision` and `collision_scored` are different numbers, and when the
+    averaged one is unsafe.** `orbit_partition` acts on `templates[0]`, but
+    `collision` averages over all `T` templates. Each template induces its own
+    partition, so the average can be dominated by templates whose partition is
+    nothing like the one being acted on. Measured on Qwen2.5-0.5B, seed 0:
+
+        currency, 12 entities, accuracy 0.500
+            template   m_i   collisions   AUROC(collision -> wrong)
+                0       12        0            0.5000
+                2        5        9            0.4028
+                4        4        9            0.4167
+            averaged              12           0.3056
+
+    Template 0 separates every entity, so `collision_scored` is 0 for all of
+    them and scores 0.5000 — silent, which is correct, since Theorem 1 certifies
+    nothing when `m = n`. The averaged score borrows entirely from templates 2
+    and 4, and lands at 0.3056: below chance, and below every one of its own
+    five components. On `capital`, where template 0 does collapse and the other
+    templates agree with it, averaging instead helps (0.8889 -> 0.9949).
+
+    So averaging is safe when the partitions agree and harmful when they do not,
+    and nothing in the averaged number tells a caller which case they are in.
+    A score that is silent is strictly better than one that is anti-correlated.
+
+    Args:
+        scored_template: index of the template whose partition the caller acts
+            on. Defaults to 0, matching `orbit_partition`.
+
     Raises:
         ValueError: if fewer than two templates are given, since invariance is
-            undefined on one.
+            undefined on one; or if `scored_template` is out of range. Clamping
+            an out-of-range index to 0 would silently reintroduce the mismatch
+            this argument exists to remove.
     """
     if len(spec.templates) < 2:
         raise ValueError("invariance needs at least two templates")
+    if not 0 <= scored_template < len(spec.templates):
+        raise ValueError(
+            f"scored_template must lie in [0, {len(spec.templates) - 1}]; "
+            f"got {scored_template}"
+        )
 
     table = {
         e: [answer_fn(t.format(e=e)) for t in spec.templates] for e in spec.entities
@@ -199,5 +241,14 @@ def symmetry_scores(spec: RelationSpec, answer_fn) -> dict[str, dict[str, float]
                 ]
             )
         )
-        out[e] = {"invariance": inv, "collision": col, "score": inv - col}
+        j = scored_template
+        col_scored = float(
+            np.mean([table[o][j] == mine[j] for o in spec.entities if o != e])
+        )
+        out[e] = {
+            "invariance": inv,
+            "collision": col,
+            "collision_scored": col_scored,
+            "score": inv - col,
+        }
     return out
