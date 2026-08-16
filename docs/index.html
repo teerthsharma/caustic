@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Caustic — hallucination detection from the orbit partition</title>
-<meta name="description" content="A hallucination detector, a repair and a governor for language models, built from the orbit partition of a relation, with five proved bounds behind them.">
+<meta name="description" content="A hallucination detector, a repair and a governor for language models, built from the orbit partition of a relation, with nine proved bounds behind them, two of them no-go results.">
 <style>
   :root {
     --bg: #fdfdfc;
@@ -134,8 +134,7 @@
 <header class="masthead">
   <h1>Caustic</h1>
   <p class="thesis"><strong>A hallucination detector, a repair and a governor for language
-  models, built from the orbit partition of a relation, with five proved bounds behind
-  them.</strong></p>
+  models, built from the orbit partition of a relation, with nine proved bounds behind them, two of them no-go results.</strong></p>
   <p class="thesis">A model can know a fact and still be unable to reach it. When it cannot,
   distinct entities collapse onto one answer. That collapse is a topological invariant, it is
   measurable with no ground truth, and it is bounded from below by a theorem. The same bound then
@@ -153,7 +152,7 @@
     <li><a href="#partition">The orbit partition</a></li>
     <li><a href="#detect">Detection without ground truth</a></li>
     <li><a href="#branches">Five branches, and what each contributes</a></li>
-    <li><a href="#theorems">The five theorems, with proofs</a></li>
+    <li><a href="#theorems">The theorems, with proofs</a></li>
     <li><a href="#certify">What the method certifies</a></li>
     <li><a href="#neartie">The decision is a near-tie</a></li>
     <li><a href="#resonance"><strong>Stochastic resonance</strong></a></li>
@@ -291,6 +290,26 @@ condition under which a hallucination detector is of any use.</p>
     <tr><td>pooled, n = 32</td><td>0.920</td><td>0.945 [0.85, 1.00]</td></tr>
   </tbody>
 </table>
+</div>
+
+<div style="border-left:4px solid #d0a000;padding:0.75rem 1rem;margin:1.25rem 0;background:rgba(208,160,0,0.07)">
+<p><strong>Scope.</strong> These figures are measured on relations whose errors take the form
+of collapse — distinct entities pooling onto one answer. The detector detects
+<em>collapse</em>, not error. Where errors disperse instead, pooled AUROC falls to
+<strong>0.67–0.71 with bootstrap intervals spanning 0.5</strong>.</p>
+<p>Those intervals are underpowered rather than null: at the relation sizes used here
+(n = 12–20) a 95% bootstrap interval has power 0.00–0.38 to separate a true AUROC of 0.70
+from 0.50, and half-width 0.05 needs n ≈ 404. The minority classes behind the reported
+figures are 1, 3, 4 and 8 items.</p>
+<p>Injectivity is necessary and not sufficient. <code>currency</code> is injective at the
+token level and its collision AUROC is <strong>0.306</strong>, below chance, because the
+score averages five templates while the label comes from one. The precondition is also
+token-level: <code>small_capital</code> declares injectivity but
+<code>Asmara</code>/<code>Asuncion</code> share first token 1634 and
+<code>Lusaka</code>/<code>Ljubljana</code> share 444.</p>
+<p>Precision is proved and recall is not. A model that shuffles the correct answers among
+entities pools nothing, emits nothing inadmissible, scores zero accuracy, and is invisible to
+the certificate. Measured recall is 0.65–0.79.</p>
 </div>
 
 <p>Five templates per relation means five forward passes per entity, and no derivative of
