@@ -150,6 +150,36 @@ class OrbitReport:
         return self.certified_errors / len(self.entities)
 
     @property
+    def certified_set(self) -> list[str]:
+        """The entities a caller abstains on: those in non-singleton blocks.
+
+        Theorem 1 returns a count, and a count is not actionable — a caller has
+        to know *which* entities to withhold. Every error the count certifies
+        lies in this set, since a singleton block contributes nothing to
+        `n - m`. Empty for a non-injective relation, where sharing an answer is
+        not evidence of error.
+
+        Order follows `entities`, so the output is stable across runs.
+        """
+        if not self.injective:
+            return []
+        shared = {a for a, v in self.orbits.items() if len(v) > 1}
+        return [e for e, a in zip(self.entities, self.answers) if a in shared]
+
+    @property
+    def certified_precision(self) -> float | None:
+        """Theorem 6. Lower bound on the precision of `certified_set`.
+
+        `(n - m) / |S|`, computed from the partition with no ground truth. None
+        when the set is empty, which is the `m = n` case where the certificate
+        is silent — precision of an empty set is undefined, not perfect.
+        """
+        flagged = len(self.certified_set)
+        if flagged == 0:
+            return None
+        return self.certified_errors / flagged
+
+    @property
     def collapsed(self) -> bool:
         """True when the partition is degenerate for an injective relation.
 
