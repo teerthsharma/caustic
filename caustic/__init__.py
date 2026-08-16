@@ -14,7 +14,7 @@ from .theorems import (
     derangement_witness,
     winding_witness,
 )
-from .repair import NEUTRAL_PREFIX, RepairReport, repair_by_context, sweep_prefixes
+from .repair import NEUTRAL_PREFIX, constrain_to, RepairReport, repair_by_context, sweep_prefixes
 from .regime import RelationSpec, OrbitReport, orbit_partition, symmetry_scores, verify_injective
 from .regime import RelationSpec, OrbitReport, orbit_partition, symmetry_scores, admissible_distinct
 from .regime import RelationSpec, OrbitReport, orbit_partition, join_partition, symmetry_scores
@@ -44,6 +44,7 @@ __all__ = [
     "repair_by_context",
     "RepairReport",
     "NEUTRAL_PREFIX",
+    "constrain_to",
     "derangement_witness",
     "winding_witness",
     "volume_decay_rate",

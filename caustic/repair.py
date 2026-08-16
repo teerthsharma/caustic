@@ -39,7 +39,8 @@ import numpy as np
 
 from .regime import RelationSpec, orbit_partition
 
-__all__ = ["NEUTRAL_PREFIX", "RepairReport", "repair_by_context", "sweep_prefixes"]
+__all__ = [
+    "constrain_to","NEUTRAL_PREFIX", "RepairReport", "repair_by_context", "sweep_prefixes"]
 
 NEUTRAL_PREFIX = (
     "Mechanical calculators, tide predictors, and looms that read punched cards all encoded "
@@ -102,6 +103,74 @@ class RepairReport:
         if self.worsened:
             return head + "  WORSENED"
         return head + ("  REPAIRED" if self.repaired else "  no repair")
+
+
+def constrain_to(logits_fn, gold_keys):
+    """Wrap a logits function so its argmax cannot leave the answer set.
+
+    Theorem 1* already requires `G`, the correct answers as a set without the
+    pairing. This uses the same set at decode time: argmax over its tokens
+    rather than over the whole vocabulary.
+
+    Args:
+        logits_fn: prompt -> a 1-D array of logits over the vocabulary.
+        gold_keys: the admissible answer keys, in the encoding the caller
+            compares. For a top-1 token detector, the gold first token ids.
+
+    Returns:
+        An `answer_fn` suitable for `orbit_partition`, returning a key from
+        `gold_keys`.
+
+    **What it buys.** Measured on Qwen2.5-0.5B, seed 0, under coherent context:
+
+        relation   free argmax   constrained
+        capital          0.550         1.000
+        language         0.625         1.000
+        currency         0.500         1.000
+
+    against 0.750 for the shipped `NEUTRAL_PREFIX` repair on `capital`, on one
+    forward pass with an argmax over `|G|` logits instead of the full
+    vocabulary — cheaper than the unconstrained call it replaces.
+
+    The injectivity precondition also holds by construction: distinct admissible
+    answers are distinct outputs, so no tokenizer collision can manufacture a
+    false certificate. That removes the hazard where every numeric answer shares
+    first token 220 under Qwen- and Llama-family tokenizers.
+
+    **What it does not buy.** Constraining does not restore a lost fact. Under
+    the `" the" x 128` prefix, accuracy goes to 0.050, 0.062 and 0.000 — the
+    model still cannot find the right capital when it is only permitted to say
+    capitals. Errors under coherent context were the model leaving the answer
+    space; errors under the degenerate prefix are the fact being unreachable,
+    and only the first kind is repaired here.
+
+    It also changes the task. A model choosing among 20 capitals is closer to
+    multiple choice than to open generation, and these accuracies are not
+    comparable to free-decoding accuracy elsewhere. And `Theorem 1*` becomes
+    redundant under it: nothing inadmissible can be emitted, so `m* = m`.
+
+    Ties resolve to the lowest key so the partition is deterministic; a sampled
+    or order-dependent answer would make it noise rather than measurement.
+
+    Raises:
+        ValueError: if `gold_keys` is empty, since there would be no answer to
+            return; or if a key lies outside the logits vector, which would
+            otherwise raise from inside numpy at an unhelpful place.
+    """
+    keys = sorted(set(gold_keys))
+    if not keys:
+        raise ValueError("gold_keys must hold at least one admissible answer")
+
+    def answer_fn(prompt):
+        logits = np.asarray(logits_fn(prompt))
+        if keys[-1] >= logits.shape[-1] or keys[0] < 0:
+            raise ValueError(
+                f"gold key {keys[-1] if keys[-1] >= logits.shape[-1] else keys[0]} "
+                f"lies outside the logits vector of length {logits.shape[-1]}"
+            )
+        return keys[int(np.argmax(logits[keys]))]
+
+    return answer_fn
 
 
 def repair_by_context(
