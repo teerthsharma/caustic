@@ -109,11 +109,12 @@ def test_unicode_and_punctuation_entities_are_handled():
     assert sum(len(v) for v in r.orbits.values()) == 4
 
 
-def test_duplicate_entities_are_not_silently_deduplicated():
-    """Two copies of one entity give one answer, hence an orbit of two. The
-    caller's duplicate is their bug, but it must not vanish from the totals."""
-    r = orbit_partition(RelationSpec(TPLS, ("A", "A", "B")), lambda p: p.count("A"))
-    assert sum(len(v) for v in r.orbits.values()) == 3
+def test_duplicate_entities_are_rejected_rather_than_partitioned():
+    """Two copies of one entity used to give one answer, hence an orbit of two,
+    hence a certified error the model did not make. Not deduplicating was the
+    lesser of two wrong behaviours; the spec now refuses to be built at all."""
+    with pytest.raises(ValueError, match="duplicate entity"):
+        RelationSpec(TPLS, ("A", "A", "B"))
 
 
 def test_repair_of_an_already_separated_partition_is_not_a_repair():

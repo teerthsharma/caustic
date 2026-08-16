@@ -9,7 +9,7 @@ from .theorems import (
     winding_witness,
 )
 from .repair import NEUTRAL_PREFIX, RepairReport, repair_by_context, sweep_prefixes
-from .regime import RelationSpec, OrbitReport, orbit_partition, symmetry_scores
+from .regime import RelationSpec, OrbitReport, orbit_partition, symmetry_scores, verify_injective
 from .attractor import kaplan_yorke_dimension, embedding_bound, metric_entropy, spectrum_report
 from .cocycle import lyapunov_spectrum, finite_time_spectrum
 from .oseledets import growth_filtration, filtration_entropy, tolerance_sweep
@@ -42,6 +42,7 @@ __all__ = [
     "OrbitReport",
     "orbit_partition",
     "symmetry_scores",
+    "verify_injective",
     "kaplan_yorke_dimension",
     "embedding_bound",
     "metric_entropy",
