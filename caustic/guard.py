@@ -134,14 +134,19 @@ def guard(
     if answer_fn is None and batch_fn is None:
         raise ValueError("one of answer_fn or batch_fn is required")
     verdict = select_prefix(spec, answer_fn, dict(candidates or {}), batch_fn=batch_fn)
-    verdict = select_prefix(spec, answer_fn, dict(candidates or {}))
     # The competition already partitioned under every candidate, so the winner's
     # partition is in hand. Recomputing it would cost n forward passes for a
     # result that is already known.
     report = verdict.winner_report
     if report is None:  # pragma: no cover - only for a hand-built verdict
         prefix = verdict.winner
-        report = orbit_partition(spec, lambda p, _pre=prefix: answer_fn(_pre + p))
+        if batch_fn is not None:
+            report = orbit_partition(
+                spec, None,
+                batch_fn=lambda ps, _p=prefix: batch_fn([_p + q for q in ps]),
+            )
+        else:
+            report = orbit_partition(spec, lambda p, _pre=prefix: answer_fn(_pre + p))
 
     shared = {a for a, v in report.orbits.items() if len(v) > 1}
     flagged = {e for e, a in zip(report.entities, report.answers) if a in shared}

@@ -298,22 +298,17 @@ def test_single_class_bootstrap_resamples_are_counted_and_pinned(monkeypatch):
         labels[: max(2, n // 5)] = True
         scores = np.arange(n, dtype=float)
 
-        seen: list[float] = []
-
-        def counting_auroc(s, y, _real=detect.auroc, _seen=seen):
-            y = np.asarray(y).astype(bool)
-            got = _real(s, y)
-            if y.all() or not y.any():
-                _seen.append(got)
-            return got
-
-        monkeypatch.setattr(detect, "auroc", counting_auroc)
-        detect.auroc_ci(scores, labels, n_boot=2000, seed=0)
-        monkeypatch.undo()
-
-        # The point-estimate call is on the full sample, which has both classes.
-        assert len(seen) == want, f"n={n}: single-class resamples moved from {want} to {len(seen)}"
-        assert all(v == 0.5 for v in seen), "the guard must score these 0.5, not skip them"
+        # Read the count from `auroc_ci_detail` rather than by wrapping `auroc`.
+        # `auroc_ci` now skips a single-class resample BEFORE calling `auroc`, so
+        # a counting wrapper sees nothing and the contamination becomes invisible
+        # exactly where it used to be observed. The draws are unchanged - same
+        # generator, same seed, same n_boot - so all four pinned values survive
+        # the fix bit for bit; only the place they are reported moved.
+        detail = detect.auroc_ci_detail(scores, labels, n_boot=2000, seed=0)
+        assert detail.n_discarded == want, (
+            f"n={n}: single-class resamples moved from {want} to {detail.n_discarded}"
+        )
+        assert detail.n_valid + detail.n_discarded == 2000
 
 
 if __name__ == "__main__":
