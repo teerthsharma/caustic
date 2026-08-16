@@ -139,7 +139,7 @@ def _adjusted_rand(a, b) -> float:
 
 
 def select_prefix(
-    spec: RelationSpec, answer_fn, candidates: dict[str, str]
+    spec: RelationSpec, answer_fn, candidates: dict[str, str], batch_fn=None
 ) -> PrefixVerdict:
     """Run candidate prefixes in competition; pick the one that certifies fewest errors.
 
@@ -151,6 +151,10 @@ def select_prefix(
         spec: the relation. Must be injective, since the scorer is Theorem 1.
         answer_fn: prompt -> hashable answer. Must be deterministic.
         candidates: name -> prefix text. An entry named "none" is added if absent.
+        batch_fn: optional prompts -> answers, one call per candidate instead of
+            one per entity per candidate. Preferred when supplied. The prefix is
+            prepended to every prompt before the call, so a batch function only
+            has to answer the prompts it is handed.
     """
     if not spec.injective:
         raise ValueError(
@@ -170,7 +174,14 @@ def select_prefix(
     # `(c + 1) * n` passes to `n`. Candidates that never ran are absent from
     # `scores` rather than recorded as 0.0, since an untested candidate is not
     # a candidate that tied.
-    base_report = orbit_partition(spec, answer_fn)
+    def partition(prefix: str):
+        if batch_fn is not None:
+            return orbit_partition(
+                spec, None, batch_fn=lambda ps, _p=prefix: batch_fn([_p + q for q in ps])
+            )
+        return orbit_partition(spec, lambda p, _p=prefix: answer_fn(_p + p))
+
+    base_report = partition("")
     baseline = certified_error_floor(n, base_report.n_distinct)
     if baseline == 0.0:
         return PrefixVerdict(
@@ -191,7 +202,7 @@ def select_prefix(
     for name, prefix in pool.items():
         if name == "none":
             continue
-        rep = orbit_partition(spec, (lambda p, _pre=prefix: answer_fn(_pre + p)))
+        rep = partition(prefix)
         reports[name] = rep
         scores[name] = certified_error_floor(n, rep.n_distinct)
     # Decline unless a candidate strictly beats doing nothing.
