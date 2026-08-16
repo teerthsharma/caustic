@@ -1,4 +1,4 @@
-"""Five results, one per branch, each with a proof and an executable witness.
+"""Six results, one per branch, each with a proof and an executable witness.
 
 Every statement here is elementary. That is deliberate: the value is not in the
 difficulty of the proofs but in the fact that each one is *checkable against a
@@ -46,6 +46,34 @@ type. No amount of downstream capability recovers it, which is why orbit collaps
 is not merely an error but an unrecoverable one.
 Measured instance: the " the" x 128 prefix pooled all 20 countries, bounding any
 downstream recovery at 0.05.
+
+--------------------------------------------------------------------------------
+THEOREM 2* (game theory) -- Join Recovery Bound
+--------------------------------------------------------------------------------
+Let `f_1..f_T` be the answer maps under `T` templates and `m_join` the number of
+blocks of their join. For ANY downstream `h` of the full answer tuple, the
+fraction of entities recovered is at most `m_join / n`.
+
+Proof. `h` is constant on each join block, since that block is exactly the set
+of entities whose observed tuple is identical. It agrees with the identity on at
+most one entity per block, giving at most `m_join` successes out of `n`. []
+
+Theorem 2 reads a pooled block as an equilibrium no downstream capability
+escapes. That is true of ONE answer and false of the answer vector: the join is
+at least as fine as every component, so `m_join >= max_t m_t` and this ceiling
+is never lower. The two bounds differ by exactly the information a single
+template discards.
+
+The gap is the licence for repair. If the join were as coarse as the worst
+template, no prefix could recover anything, because the entity would be absent
+from the model's outputs rather than from one of them. Measured across four
+relations and five templates, the join is DISCRETE in 8 of 8 conditions, so the
+ceiling is 1.0 even where a single template pools 16 entities into 3 orbits.
+Pooling under one paraphrase hides the entity; it does not destroy it.
+
+This is the theoretical companion to the measured 96% recoverability of the
+entity from the hidden state. Both say the failure is retrieval, not
+representation.
 
 --------------------------------------------------------------------------------
 THEOREM 3 (differential geometry) -- Zero Coupling Implies Pooling
@@ -124,6 +152,7 @@ import numpy as np
 __all__ = [
     "orbit_error_bound",
     "pooling_recovery_bound",
+    "join_recovery_bound",
     "path_integral_change",
     "volume_decay_rate",
     "winding_witness",
@@ -147,6 +176,48 @@ def pooling_recovery_bound(block_size: int) -> float:
     if block_size < 1:
         raise ValueError("block size must be positive")
     return 1.0 / block_size
+
+
+def join_recovery_bound(n_entities: int, n_join: int) -> float:
+    """Theorem 2*. Recovery ceiling for a receiver that sees every paraphrase.
+
+    **Statement.** Let `f_1..f_T` be the answer maps under `T` templates and let
+    `m_join` be the number of blocks of their join. Then for ANY downstream
+    function `h` of the full answer tuple, the fraction of entities recovered is
+    at most `m_join / n`.
+
+    Proof. `h` is constant on each join block, since the block is by definition
+    the set of entities on which the observed tuple is identical. It can
+    therefore agree with the identity on at most one entity per block, giving at
+    most `m_join` successes out of `n`. []
+
+    **Relation to Theorem 2.** Theorem 2 caps recovery from ONE answer at `1/k`
+    for a block of size `k`, and reads it as a pooling equilibrium that no
+    downstream capability escapes. That is a statement about one answer, not
+    about the model. The join is at least as fine as every component partition,
+    so `m_join >= max_t m_t` and this ceiling is never lower.
+
+    **Why the gap matters.** If the join were as coarse as the worst template,
+    repair would be impossible in principle: the entity would be absent from the
+    model's outputs, not merely from one of them. Measured across four relations
+    and five templates, the join was DISCRETE in 8 of 8 conditions, so the
+    ceiling is 1.0 even where a single template pools 16 entities into 3 orbits.
+    Pooling under one paraphrase hides the entity; it does not destroy it, and
+    that is the licence under which a prefix can restore anything.
+
+    This is also the theoretical companion to the measured 96% recoverability of
+    the entity from the hidden state: both say the failure is retrieval, not
+    representation.
+
+    Raises:
+        ValueError: if `n_join` is outside `[1, n_entities]`, which means the
+            count did not come from a partition of these entities.
+    """
+    if n_entities < 1:
+        raise ValueError("need at least one entity")
+    if not 1 <= n_join <= n_entities:
+        raise ValueError(f"n_join must lie in [1, {n_entities}]; got {n_join}")
+    return n_join / n_entities
 
 
 def path_integral_change(grad_fn, h1: np.ndarray, h2: np.ndarray, steps: int = 2048) -> float:
