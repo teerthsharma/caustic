@@ -123,6 +123,7 @@ import numpy as np
 
 __all__ = [
     "orbit_error_bound",
+    "admissible_error_bound",
     "pooling_recovery_bound",
     "path_integral_change",
     "volume_decay_rate",
@@ -140,6 +141,59 @@ def orbit_error_bound(n_entities: int, n_distinct: int) -> int:
     if not 1 <= n_distinct <= n_entities:
         raise ValueError(f"n_distinct must lie in [1, {n_entities}]; got {n_distinct}")
     return n_entities - n_distinct
+
+
+def admissible_error_bound(n_entities: int, n_admissible_distinct: int) -> int:
+    """Theorem 1*. Minimum wrong answers, given the partition AND the answer set.
+
+    **Statement.** Let `R : E -> A` be injective and unknown, `f : E -> A` the
+    observed answers, and `G = R(E)` the set of correct answers *as a set*,
+    without the pairing. Write `m* = |f(E) ∩ G|`. Then at least `n - m*` answers
+    are wrong.
+
+    Proof. Let `C = {e : f(e) = R(e)}`. On `C` we have `f = R`, and `R` is
+    injective, so `f|_C` is injective and `|C| = |f(C)|`. Every value of `f(C)`
+    is both an observed answer and a correct one, so `f(C) ⊆ f(E) ∩ G` and
+    `|C| <= m*`. Hence errors `= n - |C| >= n - m*`. []
+
+    **Why it dominates Theorem 1.** `f(E) ∩ G ⊆ f(E)`, so `m* <= m` and
+    `n - m* >= n - m` for every input. The gap is the number of distinct answers
+    the model emitted that are not correct answers for anybody — which Theorem 1
+    cannot see, because it counts only collisions.
+
+    Measured instances, Qwen2.5-0.5B, seed 0, template 0. Nine of ten injective
+    conditions are attained EXACTLY, against a Theorem 1 bound that was loose in
+    all of them:
+
+        currency, no prefix      n=12  n-m = 0   n-m* = 6   true errors 6
+        capital, " the" x 128    n=20  n-m = 19  n-m* = 20  true errors 20
+        small_capital, tpl 0     n=18  n-m = 10  n-m* = 15  true errors 15
+        element_symbol, tpl 2    n=16  n-m = 0   n-m* = 1   true errors 1
+
+    The `currency` row is the point: Theorem 1 certifies nothing at all there,
+    and Theorem 1* certifies the exact count.
+
+    **The precondition is load-bearing and it is not free.** `R` must be
+    injective *as compared by the answer function*, which for a top-1 token id
+    means distinct gold answers must have distinct first tokens. When that
+    fails, so does the bound: on `small_capital` template 4, where `Asmara` and
+    `Asuncion` share token 1634 and `Lusaka` and `Ljubljana` share 444, the
+    bound certifies 7 against 5 actual errors. `regime.verify_injective` is the
+    check, and `n_admissible_distinct > n_entities` is rejected below because it
+    can only mean the caller passed a `G` that does not come from an injective
+    `R` on these entities.
+
+    **Cost.** One set intersection over answers already computed: no extra
+    forward pass, no paraphrase, no gradient. `O(n)` with a hash set.
+    """
+    if n_entities < 1:
+        raise ValueError("need at least one entity")
+    if not 0 <= n_admissible_distinct <= n_entities:
+        raise ValueError(
+            "n_admissible_distinct must lie in [0, n_entities] for an injective "
+            f"relation; got {n_admissible_distinct} against n={n_entities}"
+        )
+    return n_entities - n_admissible_distinct
 
 
 def pooling_recovery_bound(block_size: int) -> float:
