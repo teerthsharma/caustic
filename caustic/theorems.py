@@ -64,12 +64,30 @@ at least as fine as every component, so `m_join >= max_t m_t` and this ceiling
 is never lower. The two bounds differ by exactly the information a single
 template discards.
 
-The gap is the licence for repair. If the join were as coarse as the worst
-template, no prefix could recover anything, because the entity would be absent
-from the model's outputs rather than from one of them. Measured across four
-relations and five templates, the join is DISCRETE in 8 of 8 conditions, so the
-ceiling is 1.0 even where a single template pools 16 entities into 3 orbits.
-Pooling under one paraphrase hides the entity; it does not destroy it.
+Measured on Qwen2.5-0.5B, seed 0, five paraphrases, with the ceiling reported
+against the single-template Theorem 2 value:
+
+    relation   cond        n  m_0  max k   Thm 2   m_join   Thm 2*
+    capital    none       20   15      4   0.250       20    1.000
+    capital    " the"x128 20    1     20   0.050        1    0.050
+    language   none       16   12      5   0.200       16    1.000
+    language   " the"x128 16    2     10   0.100        2    0.125
+    currency   none       12   12      1   1.000       12    1.000
+    currency   " the"x128 12    1     12   0.083        2    0.167
+    continent  none       12    6      3   0.333       10    0.833
+    continent  " the"x128 12    1     12   0.083        1    0.083
+
+The join is discrete in 3 of 8 conditions: every injective relation under
+coherent context, and none under the degenerate prefix. That split is the
+content of the theorem. Under coherent context the entity survives all five
+paraphrases and the ceiling is 1.000, so a receiver could recover it and repair
+is licensed. Under `" the" x 128` the join collapses too and the ceiling falls
+to 0.050-0.167, so the entity is destroyed across every paraphrase rather than
+hidden in one, and no function of these outputs recovers it.
+
+So Theorem 2* separates the repairable regime from the unrepairable one, which a
+uniformly slack ceiling could not do. `continent` is many-to-one and its join is
+coarse under both conditions, as expected.
 
 This is the theoretical companion to the measured 96% recoverability of the
 entity from the hidden state. Both say the failure is retrieval, not
@@ -199,11 +217,25 @@ def join_recovery_bound(n_entities: int, n_join: int) -> float:
 
     **Why the gap matters.** If the join were as coarse as the worst template,
     repair would be impossible in principle: the entity would be absent from the
-    model's outputs, not merely from one of them. Measured across four relations
-    and five templates, the join was DISCRETE in 8 of 8 conditions, so the
-    ceiling is 1.0 even where a single template pools 16 entities into 3 orbits.
-    Pooling under one paraphrase hides the entity; it does not destroy it, and
-    that is the licence under which a prefix can restore anything.
+    model's outputs, not merely from one of them. Measured on Qwen2.5-0.5B,
+    seed 0, over four relations and five paraphrases, the join is discrete in 3
+    of 8 conditions -- every injective relation under coherent context, and none
+    under `" the" x 128`:
+
+        relation   cond         m_join   Thm 2*     Thm 2 (single template)
+        capital    none             20    1.000      0.250
+        capital    " the"x128        1    0.050      0.050
+        language   none             16    1.000      0.200
+        language   " the"x128        2    0.125      0.100
+        currency   none             12    1.000      1.000
+        currency   " the"x128        2    0.167      0.083
+
+    That split is the content. Under coherent context the entity survives all
+    five paraphrases and the ceiling is 1.000, so repair is licensed. Under the
+    degenerate prefix the join collapses too and the ceiling falls to 0.050,
+    so the entity is destroyed across every paraphrase rather than hidden in
+    one. The theorem therefore separates the repairable regime from the
+    unrepairable one, which a uniformly slack ceiling could not do.
 
     This is also the theoretical companion to the measured 96% recoverability of
     the entity from the hidden state: both say the failure is retrieval, not
