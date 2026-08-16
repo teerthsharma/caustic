@@ -9,6 +9,7 @@ from .theorems import (
     pooling_recovery_bound,
     path_integral_change,
     volume_decay_rate,
+    derangement_witness,
     winding_witness,
 )
 from .repair import NEUTRAL_PREFIX, RepairReport, repair_by_context, sweep_prefixes
@@ -38,6 +39,7 @@ __all__ = [
     "repair_by_context",
     "RepairReport",
     "NEUTRAL_PREFIX",
+    "derangement_witness",
     "winding_witness",
     "volume_decay_rate",
     "path_integral_change",

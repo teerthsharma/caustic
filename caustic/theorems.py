@@ -1,4 +1,4 @@
-"""Seven results, one per branch, each with a proof and an executable witness.
+"""Eight results, one per branch, each with a proof and an executable witness.
 
 Every statement here is elementary. That is deliberate: the value is not in the
 difficulty of the proofs but in the fact that each one is *checkable against a
@@ -175,6 +175,36 @@ is no country's capital, so `b_adm = 0`. Theorem 6 proves 0.950, Theorem 6*
 proves 1.000, and the realised precision measured 1.000. The same holds for
 `currency` under that prefix, 0.917 to 1.000 against a realised 1.000, so two of
 the four evaluable rows in `guard_at_inference` become exact.
+
+--------------------------------------------------------------------------------
+THEOREM 7 (combinatorics) -- No Recall Floor Exists
+--------------------------------------------------------------------------------
+No function of the observed partition and the answer set `G` bounds recall below
+by any positive quantity.
+
+Proof by witness. Let `f` be a bijection from `E` onto `G`, so every entity
+receives a distinct answer and every answer is somebody's correct answer. The
+partition is discrete, nothing is inadmissible, and the withheld set is empty.
+Two truths are consistent with this observation: `R = f`, under which every
+answer is correct, and `R = f . sigma` for any fixed-point-free permutation
+`sigma`, under which every answer is wrong. The partition, the orbit sizes and
+`G` are identical in both. Recall is 1 in the first world and 0 in the second,
+so no function of the observation can separate them. []
+
+The adversary is a model that SHUFFLES the correct answers among the entities.
+Nothing collapses, nothing is inadmissible, and accuracy is zero. It is the
+worst case for this method, and it is invisible by construction rather than by
+weakness of the argument.
+
+This is the recall-side counterpart of Theorem 5. Theorem 5 says no pointwise
+Jacobian invariant detects pooling, which scoped the differential arm; Theorem 7
+says no partition invariant detects dispersion, which scopes the certificate.
+Precision is untouched: Theorems 6 and 6* still hold, and on the witness the
+withheld set is empty, where precision is undefined rather than zero.
+
+Measured corroboration: realised recall of the withheld set was 0.79 mean across
+80 conditions and fell to 0.65-0.69 on the hard relations, where errors disperse
+rather than collapse -- the direction Theorem 7 says cannot be bounded away.
 """
 
 from __future__ import annotations
@@ -189,6 +219,7 @@ __all__ = [
     "pooling_recovery_bound",
     "path_integral_change",
     "volume_decay_rate",
+    "derangement_witness",
     "winding_witness",
     "certified_error_floor",
     "certified_reduction",
@@ -402,6 +433,38 @@ def volume_decay_rate(exponents: np.ndarray, n_steps: int) -> float:
     if n_steps < 0:
         raise ValueError("n_steps must be non-negative")
     return float(n_steps * np.sum(np.asarray(exponents, dtype=np.float64)))
+
+
+def derangement_witness(n: int) -> tuple[tuple[int, ...], tuple[int, ...], tuple[int, ...]]:
+    """Theorem 7. Two truths the certificate cannot tell apart.
+
+    Returns `(answers, gold, deranged)` on `n` entities, where `answers` is a
+    permutation of `gold` and `deranged` is `answers` shifted by one, so it
+    shares no position with it.
+
+    Under the truth `R = f` every answer in `answers` is correct. Under
+    `R = deranged` every one is wrong. The observation is identical in both
+    cases: `n` entities, `n` distinct answers, every answer inside `G`. So the
+    partition is discrete, nothing is inadmissible, the withheld set is empty,
+    and recall is 1 in the first world and 0 in the second.
+
+    Consequently no function of the partition and the answer set bounds recall
+    below by any positive quantity. This is a no-go, and it is the recall-side
+    counterpart of Theorem 5: Theorem 5 scopes the differential arm, Theorem 7
+    scopes the certificate.
+
+    The cyclic shift is used rather than a random derangement so the witness is
+    deterministic — a no-go argued from a random example is not an argument.
+
+    Raises:
+        ValueError: for `n < 2`, since a one-element set has no fixed-point-free
+            permutation and the witness would be vacuous.
+    """
+    if n < 2:
+        raise ValueError(f"no derangement exists on {n} element(s); need n >= 2")
+    answers = tuple(range(n))
+    deranged = tuple(range(1, n)) + (0,)
+    return answers, answers, deranged
 
 
 def winding_witness(x: float, y: float) -> tuple[np.ndarray, np.ndarray, float]:
