@@ -1,4 +1,4 @@
-"""Six results, one per branch, each with a proof and an executable witness.
+"""Seven results, one per branch, each with a proof and an executable witness.
 
 Every statement here is elementary. That is deliberate: the value is not in the
 difficulty of the proofs but in the fact that each one is *checkable against a
@@ -149,6 +149,32 @@ Measured instance: across 80 conditions on two models, four relations, five
 templates and two contexts, zero bound violations; realised precision 1.000 in 56
 of 60 evaluable conditions against a mean proved floor of 0.756, with realised
 recall 0.79 and no floor available for it.
+
+--------------------------------------------------------------------------------
+THEOREM 6* (topology) -- Precision Floor Tightened by the Answer Set
+--------------------------------------------------------------------------------
+Let `G = R(E)` be the correct answers as a SET, without the pairing, and let
+`b_adm` count the non-singleton orbits whose shared answer lies in `G`. Then
+
+    precision(S) >= (|S| - b_adm) / |S|,   and   b_adm <= b.
+
+Proof. Partition `S` by orbit. An orbit whose answer `a` is not in `G` has no
+correct member at all, since `R(e)` lies in `G` and `R(e) != a`, so it
+contributes its full size `k`. An orbit with `a` in `G` has at most one correct
+member, because `R` is injective and only one entity has `R(e) = a`, so it
+contributes at least `k - 1`. Summing gives `|S| - b_adm`. []
+
+Theorem 6 assumes an adversary can place one correct entity in every collapsed
+orbit. Theorem 6* observes that the adversary is unavailable in any orbit whose
+answer nobody's truth could be. This is not an assumption about how the model
+behaves -- it is the same `G` that Theorem 1* uses, and `G` is a set, not an
+answer key.
+
+Measured instance: the `" the" x 128` prefix sends 20 entities to one token that
+is no country's capital, so `b_adm = 0`. Theorem 6 proves 0.950, Theorem 6*
+proves 1.000, and the realised precision measured 1.000. The same holds for
+`currency` under that prefix, 0.917 to 1.000 against a realised 1.000, so two of
+the four evaluable rows in `guard_at_inference` become exact.
 """
 
 from __future__ import annotations
@@ -158,6 +184,7 @@ import numpy as np
 __all__ = [
     "orbit_error_bound",
     "certified_precision_bound",
+    "admissible_precision_bound",
     "pooling_recovery_bound",
     "path_integral_change",
     "volume_decay_rate",
@@ -234,6 +261,61 @@ def certified_precision_bound(n_entities: int, n_distinct: int, n_flagged: int) 
             "this partition; the flagged set does not come from it"
         )
     return errors / n_flagged
+
+
+def admissible_precision_bound(n_flagged: int, b_admissible: int) -> float:
+    """Theorem 6*. The precision floor, tightened by the answer set.
+
+    **Statement.** Let `S` be the entities in non-singleton orbits and let
+    `b_adm` count the non-singleton orbits whose shared answer lies in `G`, the
+    set of correct answers. Then
+
+        precision(S) >= (|S| - b_adm) / |S|.
+
+    Proof. Partition `S` by orbit. An orbit whose answer `a` is not in `G` has
+    no correct member at all, since `R(e)` lies in `G` and `R(e) != a`, so it
+    contributes its full size `k`. An orbit with `a` in `G` has at most one
+    correct member, because `R` is injective and only one entity has `R(e) = a`,
+    so it contributes at least `k - 1`. Summing,
+    `|S and wrong| >= sum(k) - b_adm = |S| - b_adm`. []
+
+    **Why it dominates Theorem 6.** `b_adm <= b`, so the floor can only rise.
+    Theorem 6 assumes an adversary can place a correct entity in every collapsed
+    orbit; Theorem 6* observes that the adversary is unavailable in any orbit
+    whose answer nobody's truth could be. This is not an assumption about how
+    the model behaves — it is the same set `G` that `admissible_error_bound`
+    already takes, and `G` is the answers as a SET, without the pairing.
+
+    Measured instance, Qwen2.5-0.5B, seed 0. The `" the" x 128` prefix sends all
+    20 entities to one token that is no country's capital, so `b_adm = 0`:
+
+        Theorem 6   floor 19/20 = 0.950
+        Theorem 6*  floor 20/20 = 1.000
+        realised                  1.000
+
+    The same holds for `currency` under that prefix: 0.833 to 1.000, realised
+    1.000. Two of the four evaluable rows in `guard_at_inference` become exact.
+
+    Raises:
+        ValueError: if `n_flagged` is zero, since precision of an empty set is
+            undefined rather than perfect; if `b_admissible` is negative; or if
+            `2 * b_admissible > n_flagged`, which is impossible because every
+            counted orbit holds at least two entities and so signals that the
+            counts do not come from one partition.
+    """
+    if n_flagged <= 0:
+        raise ValueError(
+            "precision of an empty certified set is undefined; the partition "
+            "flagged no entity, which is the m = n case where Theorem 1 is silent"
+        )
+    if b_admissible < 0:
+        raise ValueError(f"b_admissible must be non-negative; got {b_admissible}")
+    if 2 * b_admissible > n_flagged:
+        raise ValueError(
+            f"b_admissible={b_admissible} needs at least {2 * b_admissible} flagged "
+            f"entities, but |S|={n_flagged}; every counted orbit holds at least two"
+        )
+    return (n_flagged - b_admissible) / n_flagged
 
 
 def pooling_recovery_bound(block_size: int) -> float:
