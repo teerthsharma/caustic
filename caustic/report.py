@@ -36,7 +36,7 @@ import json
 import math
 import subprocess
 from datetime import datetime, timezone
-from pathlib import Path
+from pathlib import Path, PurePosixPath, PureWindowsPath
 
 import numpy as np
 
@@ -151,9 +151,15 @@ def emit(name: str, rows: list[dict], meta: dict) -> str:
     last and so override any caller key of the same name: a run cannot claim a
     SHA it was not built from.
     """
-    # Path().name strips a drive prefix too: "C:evil" is a path, not a stem, on
-    # Windows, and this repo is developed there.
-    if "\\" in name or name in ("", ".", "..") or Path(name).name != name:
+    # Both flavours, because `Path` is only one of them and CI is not the
+    # platform this repo is developed on. `PureWindowsPath("C:evil").name` is
+    # "evil", so the drive prefix is caught on Windows; `PurePosixPath` leaves
+    # it as "C:evil" and would let the write through on the Linux runner.
+    if (
+        name in ("", ".", "..")
+        or PurePosixPath(name).name != name
+        or PureWindowsPath(name).name != name
+    ):
         raise ValueError(f"name must be a bare file stem, got {name!r}")
     text = table(rows)
     print(text)

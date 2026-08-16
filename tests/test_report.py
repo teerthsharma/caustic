@@ -154,8 +154,12 @@ def test_name_that_is_not_a_bare_stem_is_rejected(tmp_path, name):
     """Negative control: nothing may write outside results/.
 
     `C:evil` is the one that does not look like a path: `Path("results") /
-    "C:evil.json"` is `C:evil.json`, an absolute-ish write on the platform this
-    repo is developed on.
+    "C:evil.json"` is `C:evil.json`, an absolute-ish write on Windows. It is
+    also the one a single-flavour guard gets wrong, and in the direction that
+    matters: `PureWindowsPath("C:evil").name` is `evil` so the guard fires on
+    the development machine, while `PurePosixPath` leaves it `C:evil` and the
+    guard stayed silent on the Linux runner. Checking one flavour means this
+    case passes exactly where it is not tested.
     """
     with pytest.raises(ValueError):
         _run(tmp_path, name, ROWS, {})
