@@ -157,17 +157,43 @@ def select_prefix(
             "the scorer is Theorem 1, which requires an injective relation; "
             "on a many-to-one relation a shared answer is correct and the score inverts"
         )
-    pool = {"none": "", **candidates}
     n = len(spec.entities)
 
-    scores: dict[str, float] = {}
-    reports = {}
+    # The competition is decidable without running it when the baseline is
+    # already discrete. `certified_error_floor` is `(n - m) / n`, which is
+    # non-negative and zero exactly when `m = n`, and a candidate is selected
+    # only if it is STRICTLY below the baseline. A zero baseline therefore
+    # cannot be beaten, so every candidate forward pass would be wasted.
+    #
+    # This is the common case at inference — a model answering a relation it
+    # knows separates every entity — and skipping it takes the cost from
+    # `(c + 1) * n` passes to `n`. Candidates that never ran are absent from
+    # `scores` rather than recorded as 0.0, since an untested candidate is not
+    # a candidate that tied.
+    base_report = orbit_partition(spec, answer_fn)
+    baseline = certified_error_floor(n, base_report.n_distinct)
+    if baseline == 0.0:
+        return PrefixVerdict(
+            winner="",
+            winner_name="none",
+            floor=baseline,
+            baseline_floor=baseline,
+            largest_orbit=base_report.largest_orbit,
+            scores={"none": baseline},
+            winner_report=base_report,
+        )
+
+    # The baseline partition is already in hand from the check above; scoring it
+    # again would cost `n` passes for a number that has not changed.
+    pool = {"none": "", **candidates}
+    scores: dict[str, float] = {"none": baseline}
+    reports = {"none": base_report}
     for name, prefix in pool.items():
+        if name == "none":
+            continue
         rep = orbit_partition(spec, (lambda p, _pre=prefix: answer_fn(_pre + p)))
         reports[name] = rep
         scores[name] = certified_error_floor(n, rep.n_distinct)
-
-    baseline = scores["none"]
     # Decline unless a candidate strictly beats doing nothing.
     best = min(
         (nm for nm in pool if nm != "none"),
