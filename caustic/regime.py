@@ -53,6 +53,7 @@ __all__ = [
     "orbit_partition",
     "symmetry_scores",
     "verify_injective",
+    "admissible_distinct",
 ]
 
 
@@ -241,6 +242,51 @@ def verify_injective(
     return [
         (a, b) for a, b in itertools.combinations(spec.entities, 2) if ids[a] == ids[b]
     ]
+def admissible_distinct(answers, gold_keys, n_entities: int | None = None) -> int:
+    """`m* = |f(E) ∩ G|`, the input to Theorem 1*.
+
+    Args:
+        answers: the observed answers, one per entity, as `OrbitReport.answers`
+            gives them. Duplicates are expected — this counts distinct values.
+        gold_keys: the set of correct answers *as a set*, in the same encoding
+            `answer_fn` returns. For a top-1 token id detector that is the set
+            of first tokens of the gold strings.
+
+    The pairing is not needed and must not be supplied: knowing that Paris and
+    Berlin are capitals is enough, and knowing which country each belongs to
+    would be ground truth. That is the whole reason the certificate survives
+    where an answer key does not exist.
+
+    Counting distinct rather than total matters. An orbit of size `s` sharing an
+    admissible answer can contain at most one correct entity, so it contributes
+    one to the ceiling on `|C|`, not `s`.
+
+    **Pass `n_entities` and the certificate checks its own precondition.** This
+    is the one thing Theorem 1 cannot do. `|G| < n` says two entities share a
+    correct answer *at the encoding being compared*, so `R` is not injective
+    there and the bound does not hold. Theorem 1 sees only the partition and has
+    no way to notice; Theorem 1* is handed `G`, so `len(set(gold_keys)) < n` is
+    exactly the violation, and it is one comparison away.
+
+    The failure it catches is measured, not hypothetical. On `small_capital`,
+    `Asmara` and `Asuncion` both encode to token 1634 and `Lusaka` and
+    `Ljubljana` both to 444. Restrict that relation to those four entities and
+    the model answers each pair with its shared token, scoring 4 of 4 correct,
+    while `orbit_error_bound(4, 2)` certifies 2 wrong. A one-sided bound that
+    fires on a perfect answer set is not one-sided.
+
+    Raises:
+        ValueError: if `n_entities` is given and `gold_keys` holds fewer than
+            `n_entities` distinct values.
+    """
+    gold = set(gold_keys)
+    if n_entities is not None and len(gold) < n_entities:
+        raise ValueError(
+            f"gold_keys holds {len(gold)} distinct values for {n_entities} "
+            "entities, so the relation is not injective at this encoding and "
+            "Theorem 1* does not apply; see regime.verify_injective"
+        )
+    return len(set(answers) & gold)
 
 
 def symmetry_scores(spec: RelationSpec, answer_fn) -> dict[str, dict[str, float]]:
