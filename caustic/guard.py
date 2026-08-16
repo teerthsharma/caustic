@@ -110,8 +110,8 @@ def guard(
         batch_fn: optional prompts -> answers, answering a whole candidate in one
             call rather than one call per entity. Composed with the early exit in
             `select_prefix`, a relation whose baseline partition is already
-            discrete costs a SINGLE batched forward pass — 1 call rather than
-            `(c + 1) * n`, measured at 16.61x on the per-batch step for 20
+            discrete costs one batched call over `n` prompts plus a one-prompt
+            padding probe, rather than `(c + 1) * n` sequential calls, measured at 16.61x on the per-batch step for 20
             prompts on Qwen2.5-0.5B. The tokenizer must pad on the left; see
             `orbit_partition` for why that failure is silent.
         gold_keys: optionally the set of correct answers *as a set*, without the
