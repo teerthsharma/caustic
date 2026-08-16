@@ -175,3 +175,34 @@ def test_the_bound_costs_no_forward_passes():
     answers = list(range(10_000))
     gold = set(range(5_000))
     assert admissible_distinct(answers, gold) == 5_000
+
+
+def test_chases_counterexample_is_rejected_rather_than_certified():
+    """The measured soundness break, refused at the front door.
+
+    Restrict `small_capital` to the four entities whose gold answers collide at
+    the token level: Eritrea/Asmara and Paraguay/Asuncion both encode to 1634,
+    Zambia/Lusaka and Slovenia/Ljubljana both to 444. The model answers each
+    pair with its shared token and the repo's grader scores 4 of 4 correct,
+    while `orbit_error_bound(4, 2)` certifies 2 wrong on a perfect answer set.
+
+    Theorem 1 cannot see this: it is handed only the partition, in which those
+    four entities form two honest-looking blocks of two. Theorem 1* is handed
+    G, and |G| = 2 < 4 is the violation, so it refuses instead of certifying.
+    """
+    answers = [1634, 1634, 444, 444]
+    gold = [1634, 1634, 444, 444]  # four entities, two distinct gold keys
+
+    # Theorem 1 certifies 2 errors here, and all four answers are correct.
+    assert orbit_error_bound(4, len(set(answers))) == 2
+
+    # Theorem 1* refuses, because it can check what Theorem 1 cannot.
+    with pytest.raises(ValueError, match="not injective at this encoding"):
+        admissible_distinct(answers, gold, n_entities=4)
+
+
+def test_the_precondition_check_is_opt_in_and_silent_when_it_holds():
+    """Passing n_entities on a genuinely injective relation changes nothing."""
+    answers = [1, 1, 3]
+    gold = [1, 2, 3]
+    assert admissible_distinct(answers, gold, n_entities=3) == admissible_distinct(answers, gold)
