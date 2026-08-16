@@ -53,6 +53,7 @@ __all__ = [
     "orbit_partition",
     "symmetry_scores",
     "verify_injective",
+    "injective_subset",
     "admissible_distinct",
     "join_partition",
     "symmetry_scores",
@@ -317,6 +318,68 @@ def verify_injective(
     return [
         (a, b) for a, b in itertools.combinations(spec.entities, 2) if ids[a] == ids[b]
     ]
+def injective_subset(spec: RelationSpec, gold, first_token_fn):
+    """Restrict a relation to the entities the observable can actually separate.
+
+    `verify_injective` reports that two gold answers collide at the encoding
+    `answer_fn` compares, and a caller then skips the relation entirely. That
+    discards most of a usable relation: `small_capital` has 18 entities and 16
+    distinct gold first tokens under Qwen2.5-0.5B, so 16 of them satisfy the
+    precondition and only the two colliding pairs do not.
+
+    Keeping one entity per colliding group leaves a relation on which Theorem 1
+    and everything descending from it apply. Which member survives is arbitrary,
+    so it is the first in the caller's order, making the restriction
+    deterministic across runs.
+
+    **This is a scope reduction, not a repair.** The bound holds on the returned
+    entities and says nothing about the removed ones — those answers are still
+    produced and still unexamined. A caller reporting a certified error rate must
+    report it against the restricted count, not the original.
+
+    A genuinely many-to-one relation is not rescued by this. `continent` has 12
+    entities and 6 distinct answers under every tokenizer, because Europe really
+    is correct for two of those countries; restricting it leaves 6 entities and
+    changes what the relation means. The distinction worth drawing is between a
+    tokenizer artifact, which this repairs, and a property of the relation,
+    which it does not.
+
+    Args:
+        spec: the relation to restrict.
+        gold: entity -> correct answer, covering every entity in `spec`.
+        first_token_fn: the encoding `answer_fn` compares, mapping an answer to
+            a hashable key. For a top-1 token detector, the first token id.
+
+    Returns:
+        `(restricted_spec, dropped)` where `dropped` lists the removed entities
+        in the order they were removed.
+
+    Raises:
+        ValueError: if `gold` does not cover every entity, since a missing key
+            would silently drop an entity as though it had collided; or if fewer
+            than two entities survive, which is not a scope reduction but a
+            relation the observable cannot measure at all.
+    """
+    missing = [e for e in spec.entities if e not in gold]
+    if missing:
+        raise ValueError(f"gold must cover every entity; missing {missing[:3]}")
+    seen: dict = {}
+    kept, dropped = [], []
+    for e in spec.entities:
+        key = first_token_fn(gold[e])
+        if key in seen:
+            dropped.append(e)
+        else:
+            seen[key] = e
+            kept.append(e)
+    if len(kept) < 2:
+        raise ValueError(
+            f"only {len(kept)} entity survives the restriction; a partition needs "
+            "two, so this observable cannot measure this relation at all"
+        )
+    return RelationSpec(spec.templates, tuple(kept), spec.injective), dropped
+
+
 def admissible_distinct(answers, gold_keys, n_entities: int | None = None) -> int:
     """`m* = |f(E) ∩ G|`, the input to Theorem 1*.
 

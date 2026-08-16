@@ -60,6 +60,7 @@ __all__ = [
     "join_partition",
     "symmetry_scores",
     "verify_injective",
+    "injective_subset",
     "admissible_distinct",
     "kaplan_yorke_dimension",
     "embedding_bound",
