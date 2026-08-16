@@ -75,6 +75,16 @@ result is coherence rather than priming — but the prefix was described as cont
 chemistry, and it does. Separately, the repair figure of 1.000 on `capital` belongs to a
 longer tiled passage; the exported constant gives 0.750.
 
+**Numeric answers break the observable on modern tokenizers, and the failure is total.**
+Qwen- and Llama-family tokenizers emit the space as its own token before a digit, so `" 1"`
+becomes `[220, 16]` and `" 20"` becomes `[220, 17, 15]`. Every numeric answer then shares first
+token 220: twenty distinct numbers collapse to **one** observable value, `m = 1` regardless of
+the model, and Theorem 1 would certify `n − 1 = 19` wrong answers on a model that answered all
+twenty correctly. `verify_injective` raises on exactly this and is the only thing between a
+caller and that false certification. The rule is per-tokenizer, not per-relation — the same
+numeric relation is perfectly injective under GPT-2, where `" 20"` is a single token. Word
+answers are safe; digits, symbols and punctuation are not.
+
 **Recall has no floor, and cannot.** Theorem 7 exhibits a model that shuffles the correct
 answers among entities: nothing pools, nothing is inadmissible, accuracy is zero, and the
 certificate is silent. Precision is proved; recall is measured at 0.65–0.79 and is
