@@ -7,6 +7,7 @@ from .theorems import (
     certified_precision_bound,
     admissible_precision_bound,
     pooling_recovery_bound,
+    join_recovery_bound,
     path_integral_change,
     volume_decay_rate,
     derangement_witness,
@@ -15,6 +16,7 @@ from .theorems import (
 from .repair import NEUTRAL_PREFIX, RepairReport, repair_by_context, sweep_prefixes
 from .regime import RelationSpec, OrbitReport, orbit_partition, symmetry_scores, verify_injective
 from .regime import RelationSpec, OrbitReport, orbit_partition, symmetry_scores, admissible_distinct
+from .regime import RelationSpec, OrbitReport, orbit_partition, join_partition, symmetry_scores
 from .attractor import kaplan_yorke_dimension, embedding_bound, metric_entropy, spectrum_report
 from .cocycle import lyapunov_spectrum, finite_time_spectrum
 from .oseledets import growth_filtration, filtration_entropy, tolerance_sweep
@@ -44,6 +46,7 @@ __all__ = [
     "volume_decay_rate",
     "path_integral_change",
     "pooling_recovery_bound",
+    "join_recovery_bound",
     "orbit_error_bound",
     "admissible_error_bound",
     "certified_precision_bound",
@@ -51,6 +54,7 @@ __all__ = [
     "RelationSpec",
     "OrbitReport",
     "orbit_partition",
+    "join_partition",
     "symmetry_scores",
     "verify_injective",
     "admissible_distinct",

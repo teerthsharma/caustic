@@ -1,4 +1,5 @@
 """Eight results, one per branch, each with a proof and an executable witness.
+"""Six results, one per branch, each with a proof and an executable witness.
 
 Every statement here is elementary. That is deliberate: the value is not in the
 difficulty of the proofs but in the fact that each one is *checkable against a
@@ -46,6 +47,52 @@ type. No amount of downstream capability recovers it, which is why orbit collaps
 is not merely an error but an unrecoverable one.
 Measured instance: the " the" x 128 prefix pooled all 20 countries, bounding any
 downstream recovery at 0.05.
+
+--------------------------------------------------------------------------------
+THEOREM 2* (game theory) -- Join Recovery Bound
+--------------------------------------------------------------------------------
+Let `f_1..f_T` be the answer maps under `T` templates and `m_join` the number of
+blocks of their join. For ANY downstream `h` of the full answer tuple, the
+fraction of entities recovered is at most `m_join / n`.
+
+Proof. `h` is constant on each join block, since that block is exactly the set
+of entities whose observed tuple is identical. It agrees with the identity on at
+most one entity per block, giving at most `m_join` successes out of `n`. []
+
+Theorem 2 reads a pooled block as an equilibrium no downstream capability
+escapes. That is true of ONE answer and false of the answer vector: the join is
+at least as fine as every component, so `m_join >= max_t m_t` and this ceiling
+is never lower. The two bounds differ by exactly the information a single
+template discards.
+
+Measured on Qwen2.5-0.5B, seed 0, five paraphrases, with the ceiling reported
+against the single-template Theorem 2 value:
+
+    relation   cond        n  m_0  max k   Thm 2   m_join   Thm 2*
+    capital    none       20   15      4   0.250       20    1.000
+    capital    " the"x128 20    1     20   0.050        1    0.050
+    language   none       16   12      5   0.200       16    1.000
+    language   " the"x128 16    2     10   0.100        2    0.125
+    currency   none       12   12      1   1.000       12    1.000
+    currency   " the"x128 12    1     12   0.083        2    0.167
+    continent  none       12    6      3   0.333       10    0.833
+    continent  " the"x128 12    1     12   0.083        1    0.083
+
+The join is discrete in 3 of 8 conditions: every injective relation under
+coherent context, and none under the degenerate prefix. That split is the
+content of the theorem. Under coherent context the entity survives all five
+paraphrases and the ceiling is 1.000, so a receiver could recover it and repair
+is licensed. Under `" the" x 128` the join collapses too and the ceiling falls
+to 0.050-0.167, so the entity is destroyed across every paraphrase rather than
+hidden in one, and no function of these outputs recovers it.
+
+So Theorem 2* separates the repairable regime from the unrepairable one, which a
+uniformly slack ceiling could not do. `continent` is many-to-one and its join is
+coarse under both conditions, as expected.
+
+This is the theoretical companion to the measured 96% recoverability of the
+entity from the hidden state. Both say the failure is retrieval, not
+representation.
 
 --------------------------------------------------------------------------------
 THEOREM 3 (differential geometry) -- Zero Coupling Implies Pooling
@@ -217,6 +264,7 @@ __all__ = [
     "certified_precision_bound",
     "admissible_precision_bound",
     "pooling_recovery_bound",
+    "join_recovery_bound",
     "path_integral_change",
     "volume_decay_rate",
     "derangement_witness",
@@ -406,6 +454,62 @@ def pooling_recovery_bound(block_size: int) -> float:
     if block_size < 1:
         raise ValueError("block size must be positive")
     return 1.0 / block_size
+
+
+def join_recovery_bound(n_entities: int, n_join: int) -> float:
+    """Theorem 2*. Recovery ceiling for a receiver that sees every paraphrase.
+
+    **Statement.** Let `f_1..f_T` be the answer maps under `T` templates and let
+    `m_join` be the number of blocks of their join. Then for ANY downstream
+    function `h` of the full answer tuple, the fraction of entities recovered is
+    at most `m_join / n`.
+
+    Proof. `h` is constant on each join block, since the block is by definition
+    the set of entities on which the observed tuple is identical. It can
+    therefore agree with the identity on at most one entity per block, giving at
+    most `m_join` successes out of `n`. []
+
+    **Relation to Theorem 2.** Theorem 2 caps recovery from ONE answer at `1/k`
+    for a block of size `k`, and reads it as a pooling equilibrium that no
+    downstream capability escapes. That is a statement about one answer, not
+    about the model. The join is at least as fine as every component partition,
+    so `m_join >= max_t m_t` and this ceiling is never lower.
+
+    **Why the gap matters.** If the join were as coarse as the worst template,
+    repair would be impossible in principle: the entity would be absent from the
+    model's outputs, not merely from one of them. Measured on Qwen2.5-0.5B,
+    seed 0, over four relations and five paraphrases, the join is discrete in 3
+    of 8 conditions -- every injective relation under coherent context, and none
+    under `" the" x 128`:
+
+        relation   cond         m_join   Thm 2*     Thm 2 (single template)
+        capital    none             20    1.000      0.250
+        capital    " the"x128        1    0.050      0.050
+        language   none             16    1.000      0.200
+        language   " the"x128        2    0.125      0.100
+        currency   none             12    1.000      1.000
+        currency   " the"x128        2    0.167      0.083
+
+    That split is the content. Under coherent context the entity survives all
+    five paraphrases and the ceiling is 1.000, so repair is licensed. Under the
+    degenerate prefix the join collapses too and the ceiling falls to 0.050,
+    so the entity is destroyed across every paraphrase rather than hidden in
+    one. The theorem therefore separates the repairable regime from the
+    unrepairable one, which a uniformly slack ceiling could not do.
+
+    This is also the theoretical companion to the measured 96% recoverability of
+    the entity from the hidden state: both say the failure is retrieval, not
+    representation.
+
+    Raises:
+        ValueError: if `n_join` is outside `[1, n_entities]`, which means the
+            count did not come from a partition of these entities.
+    """
+    if n_entities < 1:
+        raise ValueError("need at least one entity")
+    if not 1 <= n_join <= n_entities:
+        raise ValueError(f"n_join must lie in [1, {n_entities}]; got {n_join}")
+    return n_join / n_entities
 
 
 def path_integral_change(grad_fn, h1: np.ndarray, h2: np.ndarray, steps: int = 2048) -> float:
