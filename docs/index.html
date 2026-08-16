@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Caustic — hallucination detection from the orbit partition</title>
-<meta name="description" content="A hallucination detector, a repair and a governor for language models, built from the orbit partition of a relation, with ten proved bounds behind them, two of them no-go results.">
+<meta name="description" content="A hallucination detector, a repair and a governor for language models, built from the orbit partition of a relation, with eleven proved bounds behind them, one a no-go result.">
 <style>
   :root {
     --bg: #fdfdfc;
@@ -134,7 +134,7 @@
 <header class="masthead">
   <h1>Caustic</h1>
   <p class="thesis"><strong>A hallucination detector, a repair and a governor for language
-  models, built from the orbit partition of a relation, with ten proved bounds behind them, two of them no-go results.</strong></p>
+  models, built from the orbit partition of a relation, with eleven proved bounds behind them, one a no-go result.</strong></p>
   <p class="thesis">A model can know a fact and still be unable to reach it. When it cannot,
   distinct entities collapse onto one answer. That collapse is a topological invariant, it is
   measurable with no ground truth, and it is bounded from below by a theorem. The same bound then
@@ -411,7 +411,42 @@ every spectral invariant. No determinant, smallest singular value, condition num
 spectral decay can tell the injective case from the collapsed one. It is the only result here
 that tells you what <em>not</em> to build.</p>
 
-<h2 id="theorems">5 · The five theorems, with proofs</h2>
+<h2 id="theorems">5 · The theorems, with proofs</h2>
+
+<div style="border-left:4px solid #6b5bd0;padding:0.75rem 1rem;margin:1.25rem 0;background:rgba(107,91,208,0.07)">
+<p><strong>Six theorems were proved after the original five below.</strong>
+<code>caustic/theorems.py</code> carries full statements, proofs and executable witnesses for all
+eleven; they are summarised here so a citation from the abstract finds a statement rather than a
+dangling number.</p>
+<ul>
+<li><strong>1*</strong> &mdash; given the correct answers as a <em>set</em> <code>G</code>,
+<code>errors &ge; n &minus; |f(E) &cap; G|</code>. Never weaker than Theorem 1, and stronger by
+exactly one answer when anything inadmissible is emitted. Exact in 16 of 16 measured rows.</li>
+<li><strong>2*</strong> &mdash; a receiver seeing all <code>T</code> paraphrases recovers at most
+<code>m_join / n</code>. The join is discrete under coherent context and collapses under
+<code>" the"&times;128</code>, so the bound separates a repairable regime from an unrepairable one.</li>
+<li><strong>6</strong> &mdash; the certified set has
+<code>precision &ge; (n &minus; m)/|S| = 1 &minus; b/|S|</code>, proved before it is evaluated.
+Realised 1.000 against floors of 0.667&ndash;0.950.</li>
+<li><strong>6*</strong> &mdash; tightened with <code>G</code> to <code>(|S| &minus; b_adm)/|S|</code>,
+counting only orbits whose shared answer could be somebody&rsquo;s truth. Takes the collapse rows
+from 0.950 to an exact 1.000.</li>
+<li><strong>7</strong> &mdash; <em>no-go.</em> There is an observation at which no sound recall floor
+is positive: a model that permutes the correct answers among entities. So no <em>constant</em>
+<code>c &gt; 0</code> bounds recall everywhere.</li>
+<li><strong>8</strong> &mdash; <code>recall &ge; (n &minus; m*)/n</code>. Positive at 99.3% of
+observations, attained, and zero exactly at Theorem 7&rsquo;s witness. Verified over 2,048,574
+exhaustive configurations with 0 violations.</li>
+</ul>
+<p>Theorem 8 corrects an error: Theorem 7 was first stated as &ldquo;no recall floor exists&rdquo;,
+which is false. The floor is <code>certified_error_floor</code>, already shipped and reported only
+as an error rate. Theorem 7&rsquo;s witness marks where it is zero, which makes it tight rather than
+absent.</p>
+<p>Theorems 1, 1*, 2, 2*, 6 and 6* are instances of one counting argument &mdash; a map constant on
+a block agrees with an injective truth on at most one member, and on none if the block&rsquo;s value
+is nobody&rsquo;s answer. They are separated because they are applied to different partitions and
+reported as different quantities, not because they need different proofs.</p>
+</div>
 
 <p class="meta">Every statement is elementary, and that is deliberate: the value is not in the
 difficulty of the proofs but in the fact that each is checkable against a measurement made in
