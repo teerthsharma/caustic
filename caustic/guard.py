@@ -91,6 +91,7 @@ def guard(
     answer_fn,
     candidates: dict[str, str] | None = None,
     gold_keys=None,
+    batch_fn=None,
 ) -> GuardReport:
     """Measure, decide, act, and report what to withhold. No ground truth used.
 
@@ -105,6 +106,13 @@ def guard(
             — a prefix can make things worse, and an incoherent one of matched
             length drove the largest orbit from 4 to 20 in this repository's own
             measurements.
+        batch_fn: optional prompts -> answers, answering a whole candidate in one
+            call rather than one call per entity. Composed with the early exit in
+            `select_prefix`, a relation whose baseline partition is already
+            discrete costs a SINGLE batched forward pass — 1 call rather than
+            `(c + 1) * n`, measured at 16.61x on the per-batch step for 20
+            prompts on Qwen2.5-0.5B. The tokenizer must pad on the left; see
+            `orbit_partition` for why that failure is silent.
         gold_keys: optionally the set of correct answers *as a set*, without the
             pairing. Supplying it adds every entity whose answer is not a
             correct answer for anybody; those are wrong outright, so they are
@@ -123,7 +131,9 @@ def guard(
             "and on a many-to-one relation a shared answer is correct behaviour"
         )
 
-    verdict = select_prefix(spec, answer_fn, dict(candidates or {}))
+    if answer_fn is None and batch_fn is None:
+        raise ValueError("one of answer_fn or batch_fn is required")
+    verdict = select_prefix(spec, answer_fn, dict(candidates or {}), batch_fn=batch_fn)
     # The competition already partitioned under every candidate, so the winner's
     # partition is in hand. Recomputing it would cost n forward passes for a
     # result that is already known.
