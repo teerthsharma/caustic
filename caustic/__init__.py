@@ -16,6 +16,7 @@ from .oseledets import growth_filtration, filtration_entropy, tolerance_sweep
 from .detect import auroc, auroc_ci, MahalanobisScorer, PCAScorer
 from .spectrum import BULK, log_volume, sigma_max, stable_rank, summarize, tail_alpha
 from .report import table, emit
+from .stats import permutation_auroc, holm
 
 __version__ = "0.1.0"
 
@@ -68,4 +69,6 @@ __all__ = [
     "tail_alpha",
     "table",
     "emit",
+    "permutation_auroc",
+    "holm",
 ]
