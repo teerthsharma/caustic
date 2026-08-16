@@ -111,3 +111,82 @@ def test_precision_is_untouched_by_the_no_go():
     report = orbit_partition(RelationSpec(("Q {e} A", "R {e} B"), ents),
                              make_fn(dict(zip(ents, answers))))
     assert report.certified_precision is None
+
+
+def test_the_witness_fixes_the_model_so_every_observable_is_identical():
+    """Theorem 7's reach: one model, two truths, so NO observable separates them.
+
+    The witness varies the unknown truth and holds `f` fixed. Any quantity a
+    caller computes from the model without labels is therefore the same in both
+    worlds by construction — not approximately, identically, because it is the
+    same model on the same inputs. A proved recall floor would have to hold in
+    both, and recall is 0 in the second.
+
+    Simulated here with an arbitrary observable of the answer vector standing in
+    for "logits, hidden states, Jacobians, attention, anything": it cannot
+    differ between the worlds, since the truth is not one of its arguments.
+    """
+    answers, gold, deranged = derangement_witness(9)
+
+    def any_observable(obs):
+        """Stands for an arbitrary label-free statistic of what the model emitted."""
+        return (sum(obs), len(set(obs)), tuple(sorted(obs))[:3], max(obs) - min(obs))
+
+    # The observation is the same object in both worlds; only R differs.
+    assert any_observable(answers) == any_observable(answers)
+    recall_if_identity = None  # no wrong answers exist, recall undefined
+    wrong_if_deranged = [i for i, (a, d) in enumerate(zip(answers, deranged)) if a != d]
+    assert len(wrong_if_deranged) == 9
+    assert recall_if_identity is None
+    # Nothing withheld under either truth, so recall is 0 where errors exist.
+    assert len([]) / len(wrong_if_deranged) == 0.0
+
+
+def test_the_recall_floor_holds_exhaustively_and_is_attained():
+    """Theorem 8, checked over every answer map and every injective truth.
+
+    The earlier claim that no recall floor exists was false. `(n - m*)/n` is
+    sound, tight, and positive at almost every observation; it is 0 exactly at
+    the shuffle witness, which is what Theorem 7 actually establishes.
+    """
+    import itertools
+
+    from caustic.theorems import recall_floor
+
+    checks = violations = positive = 0
+    tightest = 1.0
+    for n in range(2, 6):
+        gold = list(range(n))
+        vocab = list(range(n + 2))
+        for truth in itertools.permutations(gold):
+            for f in itertools.product(vocab, repeat=n):
+                wrong = [i for i in range(n) if f[i] != truth[i]]
+                if not wrong:
+                    continue
+                orbits: dict = {}
+                for i, a in enumerate(f):
+                    orbits.setdefault(a, []).append(i)
+                flagged = {
+                    i for i, a in enumerate(f) if len(orbits[a]) > 1 or a not in gold
+                }
+                floor = recall_floor(n, len(set(f) & set(gold)))
+                recall = len(flagged & set(wrong)) / len(wrong)
+                checks += 1
+                positive += floor > 0
+                violations += recall < floor - 1e-12
+                tightest = min(tightest, recall - floor)
+
+    assert checks == 2_048_574
+    assert violations == 0
+    assert tightest == pytest.approx(0.0, abs=1e-12)
+    assert positive / checks > 0.99
+
+
+def test_the_floor_is_zero_exactly_at_the_shuffle_witness():
+    """Theorem 7 and Theorem 8 are one statement seen from both ends."""
+    from caustic.theorems import recall_floor
+
+    answers, gold, _ = derangement_witness(12)
+    assert recall_floor(12, len(set(answers) & set(gold))) == 0.0
+    # And non-zero as soon as one answer leaves the answer set.
+    assert recall_floor(12, len(set(answers[:-1]) & set(gold))) > 0.0

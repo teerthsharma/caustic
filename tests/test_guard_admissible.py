@@ -146,3 +146,26 @@ def test_the_two_routes_to_the_floor_are_the_same_number():
 
         m_star = len(set(answers) & gold)
         assert n - m_star == n_flagged - b_adm
+
+
+def test_colliding_gold_keys_are_refused_rather_than_certified():
+    """The guard must not certify errors on a relation it cannot measure.
+
+    `guard` reimplemented Theorem 1* inline and skipped the precondition check
+    that `admissible_distinct` performs. On the repository's own motivating
+    collision — Asmara/Asuncion sharing token 1634, Lusaka/Ljubljana sharing
+    444 — it reported 2 certified errors and a 0.5 precision floor over four
+    answers that were all correct.
+    """
+    gold = {"Eritrea": 1634, "Paraguay": 1634, "Zambia": 444, "Slovenia": 444}
+    ents = tuple(gold)
+    spec = RelationSpec(TPLS, ents)
+
+    def fn(prompt):
+        for k in sorted(gold, key=len, reverse=True):
+            if k in prompt:
+                return gold[k]
+        return 0
+
+    with pytest.raises(ValueError, match="not injective at this encoding"):
+        guard(spec, fn, candidates={}, gold_keys=set(gold.values()))
