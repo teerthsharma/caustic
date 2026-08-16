@@ -1,4 +1,4 @@
-"""Ten results, one per branch, each with a proof and an executable witness.
+"""Eleven results, one per branch, each with a proof and an executable witness.
 
 Every statement here is elementary. That is deliberate: the value is not in the
 difficulty of the proofs but in the fact that each one is *checkable against a
@@ -28,6 +28,32 @@ Tight: attained exactly when every orbit contains one correct answer.
 Measured instance: capital with no prefix gave `n = 20`, `m = 15`, certifying at
 least 5 wrong answers with no ground truth consulted. Observed accuracy 0.550,
 so 9 were actually wrong and the bound held with slack.
+
+--------------------------------------------------------------------------------
+THEOREM 1* (topology) -- Admissible Orbit Error Bound
+--------------------------------------------------------------------------------
+Let `G = R(E)` be the correct answers as a SET, without the pairing, and write
+`m* = |f(E) and G|`. For injective `R`, the number of entities on which `f` errs
+is at least `n - m*`, and `m* <= m`, so this is never weaker than Theorem 1.
+
+Proof. Let `C = {e : f(e) = R(e)}`. On `C`, `f = R` and `R` is injective, so
+`f|_C` is injective and `|C| = |f(C)|`. Every value of `f(C)` is both an observed
+answer and a correct one, so `f(C)` is contained in `f(E) and G` and
+`|C| <= m*`. Hence errors `= n - |C| >= n - m*`. []
+
+Theorem 1 counts only collisions. It cannot see an entity that answers alone and
+answers something that is nobody's correct answer, which is why it certifies 0 on
+`currency` with no prefix while six answers are wrong. Knowing WHICH answers are
+capitals is not knowing which country each belongs to, so `G` is strictly weaker
+than an answer key.
+
+Measured instance: exact in 16 of 16 evaluable rows across distilgpt2,
+SmolLM2-135M and Qwen2.5-0.5B, where `n - m` was loose in all 16.
+
+The precondition is injectivity AT THE ENCODING COMPARED, and `|G| < n` is
+exactly its failure -- which Theorem 1 cannot detect and this bound can, since
+`G` is in hand. Under a decode constrained to `G` the bound collapses onto
+Theorem 1, because nothing inadmissible can then be emitted and `m* = m`.
 
 --------------------------------------------------------------------------------
 THEOREM 2 (game theory) -- Pooling Recovery Bound
@@ -223,10 +249,15 @@ proves 1.000, and the realised precision measured 1.000. The same holds for
 the four evaluable rows in `guard_at_inference` become exact.
 
 --------------------------------------------------------------------------------
-THEOREM 7 (combinatorics) -- No Recall Floor Exists
+THEOREM 7 (combinatorics) -- No UNIFORMLY Positive Recall Floor
 --------------------------------------------------------------------------------
-No function of the observed partition and the answer set `G` bounds recall below
-by any positive quantity.
+There is an observation at which no sound recall floor is positive. Hence no
+constant `c > 0` satisfies `recall >= c` for every observation.
+
+This is an existence claim, and the earlier statement of it -- that no function
+of the partition and `G` bounds recall below at all -- was FALSE. Theorem 8
+gives such a function, and it is one the repository already computed under
+another name.
 
 Proof by witness. Let `f` be a bijection from `E` onto `G`, so every entity
 receives a distinct answer and every answer is somebody's correct answer. The
@@ -242,11 +273,52 @@ Nothing collapses, nothing is inadmissible, and accuracy is zero. It is the
 worst case for this method, and it is invisible by construction rather than by
 weakness of the argument.
 
+**What the witness does and does not support.** `f` is one model in both
+worlds, so every quantity computable from it without labels -- logits, hidden
+states, Jacobians, attention, paraphrase agreement -- is bit-identical under
+`R = f` and `R = f . sigma`. A sound floor must hold in both, and recall is 0 in
+the second, so at THAT observation no observable of any kind can promise
+anything positive.
+
+The quantifier stops there. It is an existence claim about one observation, not
+a universal claim about all of them, and reading it as the latter was the error.
+The witness sits at `m* = n`, which is exactly where Theorem 8's floor evaluates
+to 0 -- so it proves that floor is TIGHT rather than that no floor exists.
+
 This is the recall-side counterpart of Theorem 5. Theorem 5 says no pointwise
 Jacobian invariant detects pooling, which scoped the differential arm; Theorem 7
-says no partition invariant detects dispersion, which scopes the certificate.
+says no label-free observable bounds recall, which scopes every arm at once.
 Precision is untouched: Theorems 6 and 6* still hold, and on the witness the
 withheld set is empty, where precision is undefined rather than zero.
+
+--------------------------------------------------------------------------------
+THEOREM 8 (combinatorics) -- Recall Floor
+--------------------------------------------------------------------------------
+Let `S*` be the certified set and `m* = |f(E) and G|`. Whenever `f` errs at all,
+
+    recall(S*) = |S* and wrong| / |wrong| >= (n - m*) / n.
+
+Proof. Theorem 1* puts all `n - m*` certified errors inside `S*`, so
+`|S* and wrong| >= n - m*`. And `|wrong| <= n`. Divide. []
+
+The right-hand side is `certified_error_floor(n, m*)`, which this module already
+ships as "Theorem 1 as a rate". The same number is simultaneously a lower bound
+on the certified set's PRECISION denominator and on its RECALL -- the repository
+computed a recall guarantee for a year and reported it only as an error rate.
+
+Verified exhaustively over every answer map and every injective truth for
+n = 2..5: 2,048,574 configurations with at least one error, 0 violations, and
+the bound is attained (tightest margin exactly 0). The floor is strictly
+positive in 99.3% of those configurations.
+
+It is 0 exactly when `m* = n`, that is when every entity answers a distinct
+admissible answer, which is Theorem 7's witness. So the two results are the same
+statement seen from both ends: the floor exists, it is tight, and its zero is
+attained precisely at the shuffle adversary.
+
+Measured instance: `capital` under `" the" x 128` has `m* = 0`, so recall is
+provably 1.000 -- every wrong answer is inside the certified set. That is the
+condition the repository previously described as having no recall guarantee.
 
 Measured corroboration: realised recall of the withheld set was 0.79 mean across
 80 conditions and fell to 0.65-0.69 on the hard relations, where errors disperse
@@ -269,6 +341,7 @@ __all__ = [
     "derangement_witness",
     "winding_witness",
     "certified_error_floor",
+    "recall_floor",
     "certified_reduction",
     "recovery_ceiling_gain",
 ]
@@ -593,6 +666,36 @@ def certified_error_floor(n_entities: int, n_distinct: int) -> float:
     partition alone with no ground truth consulted.
     """
     return orbit_error_bound(n_entities, n_distinct) / n_entities
+
+
+def recall_floor(n_entities: int, n_admissible_distinct: int) -> float:
+    """Theorem 8. Provable lower bound on the certified set's recall.
+
+    `(n - m*) / n`, computed from the partition and the answer set with no
+    ground truth. Numerically identical to `certified_error_floor` — the same
+    quantity bounds the error RATE from below and the certified set's RECALL
+    from below, and this repository reported only the first for a year.
+
+    Proof. Theorem 1* places all `n - m*` certified errors inside `S*`, so
+    `|S* and wrong| >= n - m*`; and `|wrong| <= n`. Divide. []
+
+    Verified exhaustively over every answer map and every injective truth for
+    `n = 2..5`: 2,048,574 configurations with at least one error, 0 violations,
+    bound attained with tightest margin exactly 0, strictly positive in 99.3%.
+
+    Zero exactly when `m* = n`, which is Theorem 7's shuffle witness. The two
+    results are one statement from both ends: the floor exists, it is tight, and
+    its zero sits at the adversary.
+
+    It is given its own name rather than reusing `certified_error_floor` because
+    a caller reading "error floor" will not think to quote it as a recall
+    guarantee, which is the mistake this repository made — and because
+    `certified_error_floor` delegates to `orbit_error_bound`, which requires
+    `m >= 1` and so rejects `m* = 0`. That case is not degenerate here: it is
+    total collapse onto an inadmissible answer, where the floor is 1.0 and every
+    wrong answer is certified.
+    """
+    return admissible_error_bound(n_entities, n_admissible_distinct) / n_entities
 
 
 def certified_reduction(n_entities: int, m_before: int, m_after: int) -> float:

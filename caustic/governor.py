@@ -161,6 +161,16 @@ def select_prefix(
             "the scorer is Theorem 1, which requires an injective relation; "
             "on a many-to-one relation a shared answer is correct and the score inverts"
         )
+    if "none" in candidates:
+        # `pool = {"none": "", **candidates}` would take the caller's prefix TEXT
+        # while `scores` and `reports` stay seeded from the empty prefix, so
+        # `winner` would return a prefix that was never scored while
+        # `intervened` reported False and `winner_report` described a different
+        # partition. Refuse at the boundary rather than half-honour it.
+        raise ValueError(
+            '"none" is reserved for the empty prefix the governor always enters; '
+            "rename the candidate"
+        )
     n = len(spec.entities)
 
     # The competition is decidable without running it when the baseline is

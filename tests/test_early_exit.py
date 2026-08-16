@@ -96,3 +96,16 @@ def test_the_verdict_is_identical_with_and_without_the_shortcut():
     assert verdict.baseline_floor == pytest.approx(0.25)
     assert len(calls) == (len(CANDS) + 1) * len(ENTS)
     assert verdict.winner_name == "none"  # no candidate changes the table here
+
+
+def test_a_candidate_named_none_is_refused():
+    """The sentinel is reserved, and half-honouring it desynchronises the verdict.
+
+    `pool = {"none": "", **candidates}` takes a caller's prefix text while
+    `scores` and `reports` stay seeded from the empty prefix. `winner` then
+    returns a prefix that was never scored, `intervened` reports False, and
+    `winner_report` describes a different partition.
+    """
+    fn, _ = counting({"France": 1, "Japan": 2, "Peru": 3, "Chile": 4})
+    with pytest.raises(ValueError, match='"none" is reserved'):
+        select_prefix(RelationSpec(TPLS, ENTS), fn, {"none": "SYSTEM: "})

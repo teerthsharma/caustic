@@ -26,8 +26,9 @@ set of entities sharing one relation, and that relation must be injective at the
 encoding `answer_fn` returns — on a many-to-one relation a shared answer is
 correct behaviour, the certificate is void, and `guard` raises rather than
 scoring. It detects collapse. An error that leaves every entity in its own orbit
-is invisible to it, which is why `certified_precision` is a floor on precision
-and no floor on recall exists or can exist.
+is invisible to it. `certified_precision` is a floor on precision; `recall_floor`
+is a floor on recall, and it is 0 exactly at that adversary. Neither is an
+estimate — both are attained.
 """
 
 from __future__ import annotations
@@ -35,7 +36,7 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 
 from .governor import select_prefix
-from .regime import RelationSpec, orbit_partition
+from .regime import RelationSpec, admissible_distinct, orbit_partition
 from .theorems import certified_error_floor
 
 __all__ = ["GuardReport", "guard"]
@@ -121,7 +122,10 @@ def guard(
             which country each belongs to, so this is not an answer key.
 
     Raises:
-        ValueError: if the relation is not injective. The objective and both
+        ValueError: if `gold_keys` is supplied and holds fewer distinct values
+            than there are entities, since the relation is then not injective at
+            the encoding being compared and Theorem 1* does not apply; or if the
+            relation is not injective. The objective and both
             bounds are Theorem 1's, and on a many-to-one relation a shared
             answer is correct, so the sign of the score inverts.
     """
@@ -160,7 +164,18 @@ def guard(
         # Each inadmissible answer is wrong outright, and each shared admissible
         # answer still leaves at most one member of its orbit correct. Counting
         # distinct admissible answers gives the ceiling on the correct set.
-        certified = len(report.entities) - len(set(report.answers) & gold)
+        #
+        # Routed through `admissible_distinct` with `n_entities` rather than
+        # inlined, because that is where the precondition is checked. Computing
+        # the same arithmetic here skipped it, and a relation whose gold answers
+        # collide at the compared encoding was then certified: on the repo's own
+        # Asmara/Asuncion and Lusaka/Ljubljana example the guard reported 2
+        # errors and a 0.5 precision floor over four answers that were all
+        # correct. A one-sided bound that fires on a perfect answer set is not
+        # one-sided.
+        certified = len(report.entities) - admissible_distinct(
+            report.answers, gold, len(report.entities)
+        )
         flagged |= inadmissible
 
     order = list(report.entities)
