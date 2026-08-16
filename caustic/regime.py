@@ -403,7 +403,6 @@ def join_partition(spec: RelationSpec, answer_fn) -> OrbitReport:
     )
 
 
-def symmetry_scores(spec: RelationSpec, answer_fn) -> dict[str, dict[str, float]]:
 def symmetry_scores(
     spec: RelationSpec, answer_fn, scored_template: int = 0
 ) -> dict[str, dict[str, float]]:

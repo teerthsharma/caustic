@@ -1,5 +1,4 @@
-"""Eight results, one per branch, each with a proof and an executable witness.
-"""Six results, one per branch, each with a proof and an executable witness.
+"""Ten results, one per branch, each with a proof and an executable witness.
 
 Every statement here is elementary. That is deliberate: the value is not in the
 difficulty of the proofs but in the fact that each one is *checkable against a
