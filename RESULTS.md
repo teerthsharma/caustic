@@ -371,9 +371,154 @@ before.** `element_symbol` moves from accuracy 0.062 to 1.000 and from 3 orbits 
 16 under 108 tokens of neutral prose containing no chemistry. That relation was
 selected for difficulty before it was run, not after.
 
+## 12. The certificate across models, and its controls
+
+`python -m caustic.experiments.certificate_across_models`. Three models, four
+relations, two prefix conditions. The control for every row is the true error
+count, computed from the gold answers *after* the bound was computed without
+them. A bound exceeding the true count is a refutation.
+
+```
+model                       relation  cond        n  err   T1  T1*  |S|   prec     T6    T6*
+distilgpt2                  capital   none       20   20   19   20   20  1.000  0.950  1.000
+distilgpt2                  capital   the_x128   20   20   19   20   20  1.000  0.950  1.000
+distilgpt2                  language  none       16    9    8    9    9  1.000  0.889  1.000
+distilgpt2                  language  the_x128   16   16   15   16   16  1.000  0.938  1.000
+distilgpt2                  currency  none       12   12    9   12   10  1.000  0.900  1.000
+distilgpt2                  currency  the_x128   12   12   10   12   11  1.000  0.909  1.000
+SmolLM2-135M                capital   none       20   16   14   16   15  1.000  0.933  1.000
+SmolLM2-135M                capital   the_x128   20   20   18   20   20  1.000  0.900  1.000
+SmolLM2-135M                language  none       16    1    0    1    0    nan    nan    nan
+SmolLM2-135M                language  the_x128   16   16   15   16   16  1.000  0.938  1.000
+Qwen2.5-0.5B                capital   none       20    9    5    9    7  1.000  0.714  1.000
+Qwen2.5-0.5B                capital   the_x128   20   20   19   20   20  1.000  0.950  1.000
+Qwen2.5-0.5B                language  none       16    6    4    6    5  1.000  0.800  1.000
+Qwen2.5-0.5B                language  the_x128   16   16   14   16   16  1.000  0.875  1.000
+Qwen2.5-0.5B                currency  none       12    6    0    6    0    nan    nan    nan
+Qwen2.5-0.5B                currency  the_x128   12   12   11   12   12  1.000  0.917  1.000
+
+60 bound checks, 0 violations, 4 relation-model pairs skipped
+```
+
+`T1*` equals `err` in all 16 evaluable rows; `T1` is strictly below it in all 16.
+`Qwen / currency / none` is the row that matters: Theorem 1 certifies **0**, which
+proves nothing, while the true count is 6 and Theorem 1\* certifies exactly 6.
+
+**Control for the exactness claim, stated because it weakens it.** Eight of the
+16 rows are `" the"×128`, where the model emits one token that is nobody's
+capital, so `m* = 0` and any sound bound is exact by construction. Those rows
+carry no information about the theorem. On the other eight, `T1` is loose by
+exactly one — the entire advertised advantage of `T1*` over `T1` on those rows is
+one answer out of twenty. Exactness holds iff the model never gives one entity's
+correct answer to another, which is a property of the failure mode and not of the
+theorem, and is not observable at inference.
+
+Four pairs were skipped by the injectivity check, `currency` for SmolLM2-135M
+only — the same relation, the same gold strings, injective under two tokenizers
+and colliding under a third.
+
+## 13. The recall floor, verified exhaustively
+
+`recall_floor(n, m*) = (n − m*) / n`. Control: every injective truth consistent
+with each observation, enumerated rather than sampled.
+
+```
+n = 2..5, every answer map, every injective truth
+2,048,574 configurations with at least one error
+0 violations of recall >= (n - m*)/n
+tightest margin exactly 0.000000   (the bound is attained)
+strictly positive in 99.3% of configurations
+```
+
+Zero exactly when `m* = n`, which is Theorem 7's shuffle witness. On `capital`
+under `" the"×128`, `m* = 0` and the floor is **1.000**.
+
+This corrects a claim: Theorem 7 first stated that no recall floor existed. It
+does exist, and it is `certified_error_floor` — already shipped, and reported
+only as an error rate.
+
+## 14. Constrained decoding, and what it separates
+
+`python -m caustic.experiments.constrained_decode`. Control is the free argmax on
+the identical prompts and model.
+
+```
+relation  cond      mode          n   m   n-m    acc
+capital   none      free         20  15     5  0.550
+capital   none      constrained  20  20     0  1.000
+language  none      free         16  12     4  0.625
+language  none      constrained  16  16     0  1.000
+currency  none      free         12  12     0  0.500
+currency  none      constrained  12  12     0  1.000
+capital   the_x128  free         20   1    19  0.000
+capital   the_x128  constrained  20   1    19  0.050
+language  the_x128  constrained  16   1    15  0.062
+currency  the_x128  constrained  12   3     9  0.000
+```
+
+Under coherent context, restricting the argmax to the answer set takes accuracy
+to 1.000 on all three relations: those errors were the model leaving the answer
+space. Under `" the"×128` it changes almost nothing — restricted to capitals, the
+model still cannot find the right capital. **The degenerate prefix destroys
+retrieval, not surface form**, which is the control the coherence result did not
+previously have.
+
+Constraining changes the task toward multiple choice, so these accuracies are not
+comparable to free-decoding accuracy elsewhere on this page.
+
+## 15. Cost
+
+Control is the same computation, unbatched, on the same prompts and device.
+
+```
+condition        sequential   batched   speedup   answers identical
+no prefix          703.63 ms  42.36 ms   16.61x   yes
+" the" x 128       760.05 ms 446.94 ms    1.70x   yes
+```
+
+20 country-capital prompts, Qwen2.5-0.5B, float32, three runs after a warm-up.
+The gain is smaller under a long prefix because it already saturates the device.
+
+**Not shipped in a measured path.** No experiment or notebook in this repository
+calls the batched code, so this figure is reproduced by the benchmark only and
+the left-padding requirement has not been exercised against a real tokenizer
+here. A right-padded batch reads the answer at a pad position and yields a
+well-formed partition of nobody's answers, with no self-check able to detect it.
+
+## 16. The observable is degenerate on numeric answers
+
+Tokenizer only, no model. Control is a word-answer relation on the same
+tokenizers.
+
+```
+tokenizer                   relation          n  distinct 1st tokens
+distilgpt2                  atomic_number    20                   20
+distilgpt2                  planet_order      8                    8
+SmolLM2-135M                atomic_number    20                    1
+SmolLM2-135M                planet_order      8                    1
+Qwen2.5-0.5B                atomic_number    20                    1
+Qwen2.5-0.5B                planet_order      8                    1
+all three                   capital_word      8                    8
+```
+
+Qwen- and Llama-family tokenizers emit the space as its own token before a digit:
+`" 1"` is `[220, 16]`, `" 20"` is `[220, 17, 15]`, while `" Paris"` is `[12095]`.
+Every numeric answer shares first token 220, so `m = 1` regardless of the model
+and Theorem 1 would certify `n − 1 = 19` wrong answers on a model answering all
+twenty correctly. `verify_injective` raises on exactly this.
+
+---
+
 ## Limits
 
-One model at one width. Two injective relations, 12 and 20 entities. One
+Sections 1 to 11 are one model at one width, two injective relations of 12 and
+20 entities. Sections 12 to 16 add distilgpt2 and SmolLM2-135M, but all three are
+base models under 0.5B parameters, where the dominant failure is collapse. Every
+headline figure here is monotone decreasing in model capability: as failures
+shift from collapse to confusion — a plausible answer belonging to the wrong
+entity — orbits go discrete, the certified set empties, the certificate goes
+silent and Theorem 1\*'s slack grows. Nothing here tested a model where that
+could be observed, and it is the single largest limit on the page. One
 distractor passage per condition, one seed. Answers compared by top-1 token, so a
 correct answer phrased differently counts as disagreement. Injectivity is a
 required precondition and was diagnosed after observing the failure on a
