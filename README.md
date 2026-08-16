@@ -15,8 +15,8 @@
 
 <p align="center">
   <a href="LICENSE"><img src="https://img.shields.io/badge/license-MIT-blue?style=flat-square&color=00aaff" alt="MIT"></a>
-  <a href="#4-the-five-theorems"><img src="https://img.shields.io/badge/theorems-10%20proved%2C%202%20no--go-blueviolet?style=flat-square" alt="Theorems"></a>
-  <a href="#4-the-five-theorems"><img src="https://img.shields.io/badge/certificate-60%20checks%2C%203%20models%2C%200%20violations-brightgreen?style=flat-square" alt="Certificate"></a>
+  <a href="#4-the-theorems"><img src="https://img.shields.io/badge/theorems-11%20proved%2C%201%20no--go-blueviolet?style=flat-square" alt="Theorems"></a>
+  <a href="#4-the-theorems"><img src="https://img.shields.io/badge/certificate-60%20checks%2C%203%20models%2C%200%20violations-brightgreen?style=flat-square" alt="Certificate"></a>
   <a href="#3-detection-without-ground-truth"><img src="https://img.shields.io/badge/equivariance%20AUROC-0.995%20(collapse--type%20errors)-yellow?style=flat-square" alt="AUROC"></a>
   <a href="#7-stochastic-resonance"><img src="https://img.shields.io/badge/stochastic%20resonance-%2B0.333%20from%20noise-ff6b35?style=flat-square" alt="Resonance"></a>
   <a href="#8-system-prompts-are-never-neutral"><img src="https://img.shields.io/badge/neutral%20system%20prompts-0%20of%206-critical?style=flat-square" alt="Neutrality"></a>
@@ -160,7 +160,7 @@ and not one leaves the partition intact. And **averaging logits across an ensemb
 to 0.100 on `capital`, below a single pass, while majority vote never goes catastrophic — with
 a positive characteristic exponent, average ranks, not magnitudes.
 
-Five theorems stand behind the claims, one per branch of mathematics, each with a proof and an
+Eleven theorems stand behind the claims, each with a proof and an
 executable witness: topology, game theory, differential geometry, chaos theory, and a
 partial-differential-symmetry no-go which shows that no pointwise function of the Jacobian —
 determinant, smallest singular value, condition number, spectral decay — can detect pooling at
@@ -184,7 +184,7 @@ repair
 | [1](#1-the-failure-measured) | The failure, measured | The same 128 tokens, accuracy 1.000 and 0.000 |
 | [2](#2-the-orbit-partition) | The orbit partition | The shape of the failure, and that it is stable |
 | [3](#3-detection-without-ground-truth) | Detection without ground truth | Equivariance, AUROC 0.995, and its precondition |
-| [4](#4-the-five-theorems) | **The five theorems** | Full statements, proofs, and the chain between them |
+| [4](#4-the-theorems) | **The theorems** | Full statements, proofs, and the chain between them |
 | [5](#5-what-the-method-certifies) | What the method certifies | The floor, the ceiling, and what is not claimed |
 | [6](#6-the-decision-is-a-near-tie) | The decision is a near-tie | 0.2526 standard deviations, and why that matters |
 | [7](#7-stochastic-resonance) | **Stochastic resonance** | Noise raises accuracy by +0.333, and Theorem 1 picks the level |
@@ -271,7 +271,7 @@ its connected components. Three properties make it the right instrument:
   all entities, whether those answers are right or wrong.
 - **It cannot be confounded by accuracy.** Every entity is included regardless of correctness,
   so no class can collapse and no comparison inherits a moving base rate.
-- **It is what the theorems constrain.** `n − m` and `1/k` in [§4](#4-the-five-theorems) are
+- **It is what the theorems constrain.** `n − m` and `1/k` in [§4](#4-the-theorems) are
   both statements about blocks of this partition.
 
 `OrbitReport` carries it: `n_distinct` is the number of blocks, `largest_orbit` the size of the
@@ -351,7 +351,37 @@ and `select_prefix` raises rather than optimising a score it knows is inverted.
 
 ---
 
-## 4. The five theorems
+## 4. The theorems
+
+### Theorems added after the original five
+
+The five below were the original set. Six more were proved afterwards, and
+`caustic/theorems.py` carries the full statements, proofs and executable
+witnesses for all eleven. Summarised here so a reader following a citation from
+the abstract or from `caustic/guard.py` finds the statement rather than a
+dangling number.
+
+| | statement | status |
+|---|---|---|
+| **1\*** | Given the correct answers as a *set* `G`, `errors >= n - \|f(E) ∩ G\|`. Never weaker than Theorem 1, and stronger by exactly one answer when anything inadmissible is emitted. | proved; exact in 16 of 16 measured rows |
+| **2\*** | A receiver seeing all `T` paraphrases recovers at most `m_join / n`. | proved; join discrete under coherent context, collapsed under `" the"×128` |
+| **6** | The certified set `S = {e : k_e > 1}` has `precision(S) >= (n - m) / \|S\| = 1 - b/\|S\|`. | proved; realised 1.000 against floors 0.667–0.950 |
+| **6\*** | Tightened using `G`: `precision(S) >= (\|S\| - b_adm) / \|S\|`, counting only orbits whose shared answer could be somebody's truth. | proved; 0.950 → 1.000 on the collapse rows |
+| **7** | *No-go.* There is an observation at which no sound recall floor is positive — the model that permutes correct answers among entities. Hence no **constant** `c > 0` bounds recall everywhere. | proved by witness |
+| **8** | `recall(S) >= (n - m\*) / n`. Positive at 99.3% of observations, attained, and zero exactly at Theorem 7's witness. | proved; 0 violations over 2,048,574 exhaustive configurations |
+
+Theorem 8 is the correction of an error: Theorem 7 was first stated as "no
+recall floor exists", which is false. The floor is `certified_error_floor`, a
+function this repository already shipped and reported only as an error rate.
+Theorem 7's witness marks where that floor is zero, which makes it tight rather
+than absent.
+
+Theorems 1, 1\*, 2, 2\*, 6 and 6\* are all instances of one counting argument: a
+map constant on a block agrees with an injective truth on at most one member,
+and on none if the block's value is nobody's answer. They are separated because
+they are applied to different partitions and reported as different quantities,
+not because they need different proofs.
+
 
 Five results, one per branch, each with a proof and an executable witness in
 [`caustic/theorems.py`](caustic/theorems.py). Every statement is elementary, and that is
