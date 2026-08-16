@@ -134,6 +134,7 @@ def guard(
     if answer_fn is None and batch_fn is None:
         raise ValueError("one of answer_fn or batch_fn is required")
     verdict = select_prefix(spec, answer_fn, dict(candidates or {}), batch_fn=batch_fn)
+    verdict = select_prefix(spec, answer_fn, dict(candidates or {}))
     # The competition already partitioned under every candidate, so the winner's
     # partition is in hand. Recomputing it would cost n forward passes for a
     # result that is already known.
