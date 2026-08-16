@@ -64,9 +64,16 @@ def test_the_batch_function_is_called_exactly_once():
         calls.append(list(prompts))
         return [_lookup(p) for p in prompts]
 
-    orbit_partition(RelationSpec(TPLS, ENTS), None, batch_fn=batch_fn)
+    orbit_partition(RelationSpec(TPLS, ENTS), None, batch_fn=batch_fn, verify_batch=False)
     assert len(calls) == 1
     assert len(calls[0]) == len(ENTS)
+
+    # With the padding probe on (the default), there is a second call carrying
+    # exactly one prompt. That is the cost of making a silent failure loud, and
+    # it is one prompt rather than n.
+    calls.clear()
+    orbit_partition(RelationSpec(TPLS, ENTS), None, batch_fn=batch_fn)
+    assert [len(c) for c in calls] == [len(ENTS), 1]
 
 
 def test_the_prompts_arrive_in_entity_order():
@@ -81,7 +88,7 @@ def test_the_prompts_arrive_in_entity_order():
         seen.extend(prompts)
         return [_lookup(p) for p in prompts]
 
-    orbit_partition(RelationSpec(TPLS, ENTS), None, batch_fn=batch_fn)
+    orbit_partition(RelationSpec(TPLS, ENTS), None, batch_fn=batch_fn, verify_batch=False)
     assert seen == [TPLS[0].format(e=e) for e in ENTS]
 
 

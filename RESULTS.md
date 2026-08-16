@@ -477,6 +477,9 @@ no prefix          703.63 ms  42.36 ms   16.61x   yes
 ```
 
 20 country-capital prompts, Qwen2.5-0.5B, float32, three runs after a warm-up.
+The batched figure excludes the one-prompt padding probe that now ships on by
+default; it adds one prompt to a batch of twenty, so the wall-clock claim moves
+by about 5%.
 The gain is smaller under a long prefix because it already saturates the device.
 
 **Not shipped in a measured path.** No experiment or notebook in this repository

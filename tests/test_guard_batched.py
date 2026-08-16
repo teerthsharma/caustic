@@ -57,8 +57,8 @@ def test_a_healthy_relation_costs_one_batched_call():
     """Early exit plus batching: the common case is a single forward pass."""
     fn, batches = counting(DISCRETE)
     rep = guard(RelationSpec(TPLS, ENTS), None, candidates=CANDS, batch_fn=fn)
-    assert len(batches) == 1
-    assert len(batches[0]) == len(ENTS)
+    # One batch of n, plus the single-prompt padding probe.
+    assert [len(b) for b in batches] == [len(ENTS), 1]
     assert rep.abstain == []
 
 
@@ -69,15 +69,18 @@ def test_a_collapsed_relation_costs_one_batched_call_per_candidate():
     """
     fn, batches = counting(COLLAPSED)
     guard(RelationSpec(TPLS, ENTS), None, candidates=CANDS, batch_fn=fn)
-    assert len(batches) == len(CANDS) + 1
-    assert all(len(b) == len(ENTS) for b in batches)
+    # One batch of n per candidate, each followed by its single-prompt probe.
+    full = [b for b in batches if len(b) == len(ENTS)]
+    probes = [b for b in batches if len(b) == 1]
+    assert len(full) == len(CANDS) + 1
+    assert len(probes) == len(CANDS) + 1
 
 
 def test_each_batch_carries_its_candidate_prefix():
     """The prefix must reach the prompts, or every candidate scores the baseline."""
     fn, batches = counting(COLLAPSED)
     select_prefix(RelationSpec(TPLS, ENTS), None, CANDS, batch_fn=fn)
-    prefixes = {b[0].split("The capital")[0] for b in batches}
+    prefixes = {b[0].split("The capital")[0] for b in batches if len(b) == len(ENTS)}
     assert prefixes == {"", "x ", "y ", "z "}
 
 

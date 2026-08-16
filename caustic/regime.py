@@ -204,7 +204,9 @@ class OrbitReport:
         return head + "  COLLAPSED: " + "; ".join(", ".join(g) for g in merged)
 
 
-def orbit_partition(spec: RelationSpec, answer_fn, batch_fn=None) -> OrbitReport:
+def orbit_partition(
+    spec: RelationSpec, answer_fn, batch_fn=None, verify_batch: bool = True
+) -> OrbitReport:
     """Partition entities by the answer the model gives, using the first template.
 
     Args:
@@ -213,6 +215,8 @@ def orbit_partition(spec: RelationSpec, answer_fn, batch_fn=None) -> OrbitReport
             argmax token id. Any deterministic function works; determinism is the
             caller's responsibility and a sampled answer makes the partition noise.
             May be None when `batch_fn` is given.
+        verify_batch: check the batched path against a one-element batch before
+            trusting it. On by default; see the failure it catches below.
         batch_fn: maps a LIST of prompts to a list of answers, one per prompt, in
             the order received. Preferred when supplied, since the prompts are
             independent by construction and serialising them is an artefact of
@@ -253,6 +257,35 @@ def orbit_partition(spec: RelationSpec, answer_fn, batch_fn=None) -> OrbitReport
                 f"batch_fn must return one answer per entity; got {len(answers)} "
                 f"for {len(spec.entities)} entities"
             )
+        if verify_batch:
+            # A one-element batch has nothing to pad to, so it returns the true
+            # answer under any padding side. Left-padded, the batched answer for
+            # the same prompt must match it; right-padded it will not, whenever
+            # this prompt is shorter than the longest in the batch. The same
+            # comparison catches a batch_fn that reorders its input, which the
+            # length check above cannot see.
+            #
+            # Costs one extra prompt out of n. It is on by default because both
+            # failures are silent: the resulting partition is well-formed and
+            # nobody's answers, and no downstream check can fail on it.
+            # Probe the SHORTEST prompt, not the first. Right padding corrupts
+            # a prompt in proportion to how far it falls short of the longest,
+            # so the shortest is the one guaranteed to be affected; probing the
+            # first misses the failure entirely whenever the first happens to be
+            # the longest, which it was on this repository's own capital
+            # relation.
+            j = min(range(len(prompts)), key=lambda i: (len(prompts[i]), i))
+            probe = list(batch_fn([prompts[j]]))
+            if len(probe) != 1 or probe[0] != answers[j]:
+                raise ValueError(
+                    "batched answer for the first prompt does not match the same "
+                    "prompt answered alone. The tokenizer must pad on the left, "
+                    "since the answer is read at logits[:, -1, :]; a right-padded "
+                    "batch answers at a pad position. This also fires if batch_fn "
+                    "returns answers out of the order it received them. Pass "
+                    "verify_batch=False to skip this check once you have verified "
+                    "both."
+                )
     elif answer_fn is not None:
         answers = [answer_fn(p) for p in prompts]
     else:
