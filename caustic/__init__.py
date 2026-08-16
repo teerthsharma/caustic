@@ -1,4 +1,5 @@
 from .jacobian import block_map, exact_jacobian, singular_values, top_singular_values
+from .guard import GuardReport, guard
 from .governor import PrefixVerdict, PromptCost, select_prefix, prompt_cost
 from .bridge import CANONICAL_SEED, jl_matrix, project, jl_distortion_bound, comparable_ratio
 from .theorems import (
@@ -31,6 +32,8 @@ __all__ = [
     "prompt_cost",
     "select_prefix",
     "PromptCost",
+    "GuardReport",
+    "guard",
     "PrefixVerdict",
     "comparable_ratio",
     "jl_distortion_bound",
