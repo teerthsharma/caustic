@@ -13,8 +13,8 @@ authors:
   - family-names: Sharma
     given-names: Teerth
     email: teerths57@gmail.com
-version: 0.1.0
-date-released: 2026-08-18
+version: 1.0.0
+date-released: 2026-08-12
 url: "https://github.com/teerthsharma/caustic"
 repository-code: "https://github.com/teerthsharma/caustic"
 license: MIT
