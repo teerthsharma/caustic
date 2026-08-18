@@ -14,6 +14,7 @@
 </p>
 
 <p align="center">
+  <a href="https://doi.org/10.5281/zenodo.21997746"><img src="https://img.shields.io/badge/DOI-10.5281%2Fzenodo.21997746-1682D4?style=flat-square" alt="DOI 10.5281/zenodo.21997746"></a>
   <a href="LICENSE"><img src="https://img.shields.io/badge/license-MIT-blue?style=flat-square&color=00aaff" alt="MIT"></a>
   <a href="#4-the-theorems"><img src="https://img.shields.io/badge/theorems-11%20proved%2C%201%20no--go-blueviolet?style=flat-square" alt="Theorems"></a>
   <a href="#4-the-theorems"><img src="https://img.shields.io/badge/certificate-60%20checks%2C%203%20models%2C%200%20violations-brightgreen?style=flat-square" alt="Certificate"></a>

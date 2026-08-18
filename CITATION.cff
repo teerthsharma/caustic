@@ -15,6 +15,7 @@ authors:
     email: teerths57@gmail.com
 version: 1.0.0
 date-released: 2026-08-12
+doi: 10.5281/zenodo.21997746
 url: "https://github.com/teerthsharma/caustic"
 repository-code: "https://github.com/teerthsharma/caustic"
 license: MIT
