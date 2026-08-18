@@ -1,0 +1,27 @@
+{
+  "title": "Caustic: hallucination detection and repair for language models from the orbit partition of a relation",
+  "description": "<p>A model can know a fact and still be unable to reach it. When it cannot, distinct entities collapse onto one answer. Caustic treats that collapse as a topological invariant of the orbit partition of a relation: it is measurable with no ground truth and bounded from below by a theorem. The same bound then selects the intervention, including the noise level to add and whether to intervene at all. Reported 0.995 AUROC with no ground truth, behind five proved bounds.</p>",
+  "upload_type": "software",
+  "access_right": "open",
+  "license": "mit",
+  "creators": [
+    { "name": "Sharma, Teerth" }
+  ],
+  "keywords": [
+    "large language models",
+    "hallucination detection",
+    "computational topology",
+    "orbit partition",
+    "differential geometry",
+    "fractal geometry",
+    "chaos",
+    "model interpretability"
+  ],
+  "related_identifiers": [
+    {
+      "identifier": "https://github.com/teerthsharma/caustic",
+      "relation": "isSupplementTo",
+      "scheme": "url"
+    }
+  ]
+}
