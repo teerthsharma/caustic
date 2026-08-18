@@ -1,0 +1,29 @@
+cff-version: 1.2.0
+message: "If you use this software, please cite it using the metadata below."
+type: software
+title: "Caustic: hallucination detection and repair for language models from the orbit partition of a relation"
+abstract: >-
+  A model can know a fact and still be unable to reach it. When it cannot,
+  distinct entities collapse onto one answer. Caustic treats that collapse
+  as a topological invariant of the orbit partition of a relation: it is
+  measurable with no ground truth and bounded from below by a theorem. The
+  same bound then selects the intervention, including the noise level to
+  add and whether to intervene at all.
+authors:
+  - family-names: Sharma
+    given-names: Teerth
+    email: teerths57@gmail.com
+version: 0.1.0
+date-released: 2026-08-18
+url: "https://github.com/teerthsharma/caustic"
+repository-code: "https://github.com/teerthsharma/caustic"
+license: MIT
+keywords:
+  - large language models
+  - hallucination detection
+  - computational topology
+  - orbit partition
+  - differential geometry
+  - fractal geometry
+  - chaos
+  - model interpretability
