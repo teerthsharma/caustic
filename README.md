@@ -7,6 +7,8 @@
   The same bound then selects the intervention — including how much noise to add, and whether to intervene at all.
 </p>
 
+<p align="center"><a href="https://teerth.blog/caustic"><b>Read the essay at teerth.blog/caustic</b></a> &nbsp;·&nbsp; the maths, the proofs and live figures</p>
+
 <p align="center">
   <strong>Invented by <a href="https://teerthsharma.vercel.app/">Teerth Sharma</a></strong> ·
   <a href="https://github.com/teerthsharma/caustic">github.com/teerthsharma/caustic</a> ·
